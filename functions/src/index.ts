@@ -1,6 +1,5 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
-import * as cron from 'node-cron';
 
 // Initialize Firebase Admin
 admin.initializeApp();
@@ -82,7 +81,7 @@ async function sendNotificationToUser(userId: string, title: string, body: strin
       android: {
         notification: {
           sound: 'default',
-          priority: 'high',
+          priority: 'high' as const,
         },
       },
       apns: {
@@ -115,7 +114,6 @@ export const morningNotification = functions.pubsub
       
       for (const userDoc of usersSnapshot.docs) {
         const userId = userDoc.id;
-        const userData = userDoc.data() as User;
         
         // Get today's tasks
         const today = new Date();
@@ -163,7 +161,6 @@ export const afternoonReminder = functions.pubsub
       
       for (const userDoc of usersSnapshot.docs) {
         const userId = userDoc.id;
-        const userData = userDoc.data() as User;
         
         // Get today's incomplete tasks
         const today = new Date();
@@ -202,7 +199,6 @@ export const eveningSummary = functions.pubsub
       
       for (const userDoc of usersSnapshot.docs) {
         const userId = userDoc.id;
-        const userData = userDoc.data() as User;
         
         // Get today's pending tasks
         const today = new Date();
@@ -289,7 +285,6 @@ export const checkOverdueTasks = functions.pubsub
       
       for (const userDoc of usersSnapshot.docs) {
         const userId = userDoc.id;
-        const userData = userDoc.data() as User;
         
         // Get overdue tasks
         const overdueTasks = await getOverdueTasks(userId);
