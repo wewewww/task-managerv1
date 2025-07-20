@@ -967,10 +967,10 @@ export default function HomePage() {
                 <div className="relative w-full max-w-xs sm:max-w-sm md:max-w-md h-48 sm:h-56 md:h-64 bg-slate-700/30 rounded-lg border border-slate-600">
                   {/* Axis Labels */}
                   <div className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs text-slate-400">
-                    Importance →
+                    Urgency →
                   </div>
                   <div className="absolute -left-12 top-1/2 transform -translate-y-1/2 -rotate-90 text-xs text-slate-400">
-                    Urgency →
+                    Importance →
                   </div>
                   
                   {/* Grid Lines */}
@@ -981,11 +981,11 @@ export default function HomePage() {
                     <div></div>
                   </div>
                   
-                  {/* Quadrant Labels - Fixed positioning for rectangular matrix */}
-                  <div className="absolute top-2 right-2 text-xs font-medium text-red-400">Urgent & Important</div>
-                  <div className="absolute bottom-2 right-2 text-xs font-medium text-blue-400">Important, Not Urgent</div>
-                  <div className="absolute top-2 left-2 text-xs font-medium text-yellow-400">Urgent, Not Important</div>
-                  <div className="absolute bottom-2 left-2 text-xs font-medium text-slate-400">Not Urgent, Not Important</div>
+                  {/* Quadrant Labels - Correct Eisenhower Matrix positioning */}
+                  <div className="absolute top-2 left-2 text-xs font-medium text-red-400">Urgent & Important</div>
+                  <div className="absolute top-2 right-2 text-xs font-medium text-blue-400">Important, Not Urgent</div>
+                  <div className="absolute bottom-2 left-2 text-xs font-medium text-yellow-400">Urgent, Not Important</div>
+                  <div className="absolute bottom-2 right-2 text-xs font-medium text-slate-400">Not Urgent, Not Important</div>
                   
                   {/* Task Dots */}
                   {(() => {
@@ -1001,14 +1001,14 @@ export default function HomePage() {
                       const urgencyNormalized = (urgencyValue - 1) / 9; // 0-1 scale
                       
                       // Map to pixel coordinates (responsive)
-                      // X-axis: importance (left = low, right = high)
-                      // Y-axis: urgency (bottom = low, top = high) - inverted for screen coordinates
+                      // X-axis: urgency (left = high, right = low)
+                      // Y-axis: importance (top = high, bottom = low)
                       // eslint-disable-next-line @typescript-eslint/no-unused-vars
                       const containerWidth = 320; // Base width for calculations
                       // eslint-disable-next-line @typescript-eslint/no-unused-vars
                       const containerHeight = 256; // Base height for calculations
-                      let x = 20 + (importanceNormalized * 280); // 20-300px
-                      let y = 236 - (urgencyNormalized * 196); // 236-40px (inverted)
+                      let x = 20 + ((1 - urgencyNormalized) * 280); // 20-300px (inverted for urgency)
+                      let y = 20 + ((1 - importanceNormalized) * 196); // 20-216px (inverted for importance)
                       
                       // Collision detection and resolution
                       const dotRadius = 6; // Half of w-3 h-3
@@ -1039,8 +1039,8 @@ export default function HomePage() {
                         const offsetX = Math.cos(angle) * radius;
                         const offsetY = Math.sin(angle) * radius;
                         
-                        x = Math.max(20, Math.min(300, 20 + (importanceNormalized * 280) + offsetX));
-                        y = Math.max(40, Math.min(236, 236 - (urgencyNormalized * 196) + offsetY));
+                        x = Math.max(20, Math.min(300, 20 + ((1 - urgencyNormalized) * 280) + offsetX));
+                        y = Math.max(20, Math.min(216, 20 + ((1 - importanceNormalized) * 196) + offsetY));
                         
                         attempts++;
                       }
