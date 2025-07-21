@@ -5,6 +5,8 @@ import { useTasks } from '../hooks/useTasks';
 import { Task, TaskArea, Category } from '../types/task';
 import { useAuth } from '../hooks/useAuth';
 import { notificationService } from '../lib/notificationService';
+import { db } from '../lib/firebase';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 const AREA_OPTIONS: { label: string; value: TaskArea; color: string }[] = [
   { label: 'Personal', value: 'personal', color: '#10b981' },
@@ -46,10 +48,11 @@ function calculateUrgency(task: Task, hoursPerDay: number = DEFAULT_HOURS_PER_DA
 }
 
 // Task Detail Modal Component
-function TaskDetailModal({ task, urgencyValue, onClose }: { 
+function TaskDetailModal({ task, urgencyValue, onClose, onEdit }: { 
   task: Task; 
   urgencyValue: number; 
   onClose: () => void; 
+  onEdit: (task: Task) => void;
 }) {
   const getAreaColor = (areaValue: TaskArea | string) => {
     // First check if it's a default area
@@ -74,12 +77,20 @@ function TaskDetailModal({ task, urgencyValue, onClose }: {
       <div className="bg-slate-800 border border-slate-600 rounded-xl p-4 sm:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
         <div className="flex items-start justify-between mb-4">
           <h3 className="text-lg font-semibold text-white">Task Details</h3>
-          <button
-            onClick={onClose}
-            className="text-slate-400 hover:text-white text-xl font-bold"
-          >
-            ×
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => onEdit(task)}
+              className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm font-medium transition-colors"
+            >
+              Edit
+            </button>
+            <button
+              onClick={onClose}
+              className="text-slate-400 hover:text-white text-xl font-bold"
+            >
+              ×
+            </button>
+          </div>
         </div>
 
         <div className="space-y-4">
@@ -158,6 +169,201 @@ function TaskDetailModal({ task, urgencyValue, onClose }: {
             })}
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// Edit Task Modal Component
+function EditTaskModal({ 
+  task, 
+  onClose, 
+  onSave, 
+  categories 
+}: { 
+  task: Task; 
+  onClose: () => void; 
+  onSave: (taskId: string, updates: Partial<Task>) => Promise<void>;
+  categories: Category[];
+}) {
+  const [formData, setFormData] = useState({
+    title: task.title,
+    description: task.description || '',
+    area: task.area,
+    importance: task.importance,
+    dueDate: task.dueDate ? new Date(task.dueDate).toISOString().split('T')[0] : '',
+    estTimeHrs: task.estTimeHrs ? task.estTimeHrs.toString() : ''
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+
+    try {
+      const updates: Partial<Task> = {
+        title: formData.title,
+        description: formData.description || undefined,
+        area: formData.area,
+        importance: formData.importance,
+        dueDate: formData.dueDate ? new Date(formData.dueDate) : undefined,
+        estTimeHrs: formData.estTimeHrs ? parseFloat(formData.estTimeHrs) : undefined
+      };
+
+      await onSave(task.id, updates);
+      onClose();
+    } catch (err) {
+      setError('Failed to update task. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getAreaColor = (areaValue: TaskArea | string) => {
+    const defaultArea = AREA_OPTIONS.find(opt => opt.value === areaValue);
+    if (defaultArea) return defaultArea.color;
+    
+    const customCategory = categories.find(cat => cat.name === areaValue);
+    if (customCategory) return customCategory.color;
+    
+    return '#6b7280';
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-slate-800 border border-slate-600 rounded-xl p-4 sm:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+        <div className="flex items-start justify-between mb-4">
+          <h3 className="text-lg font-semibold text-white">Edit Task</h3>
+          <button
+            onClick={onClose}
+            className="text-slate-400 hover:text-white text-xl font-bold"
+          >
+            ×
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Title */}
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-2">
+              Task Title *
+            </label>
+            <input
+              type="text"
+              value={formData.title}
+              onChange={(e) => setFormData({...formData, title: e.target.value})}
+              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Enter task title"
+              required
+            />
+          </div>
+
+          {/* Description */}
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-2">
+              Description
+            </label>
+            <textarea
+              value={formData.description}
+              onChange={(e) => setFormData({...formData, description: e.target.value})}
+              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              placeholder="Enter task description (optional)"
+              rows={3}
+            />
+          </div>
+
+          {/* Area/Category */}
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-2">
+              Category
+            </label>
+            <select
+              value={formData.area}
+              onChange={(e) => setFormData({...formData, area: e.target.value})}
+              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {AREA_OPTIONS.map(option => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+              {categories.map(category => (
+                <option key={category.id} value={category.name}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Importance and Due Date Row */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">
+                Importance (1-10)
+              </label>
+              <input
+                type="number"
+                min="1"
+                max="10"
+                value={formData.importance}
+                onChange={(e) => setFormData({...formData, importance: parseInt(e.target.value)})}
+                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">
+                Due Date
+              </label>
+              <input
+                type="date"
+                value={formData.dueDate}
+                onChange={(e) => setFormData({...formData, dueDate: e.target.value})}
+                className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+
+          {/* Estimated Time */}
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-2">
+              Estimated Time (hours)
+            </label>
+            <input
+              type="number"
+              step="0.5"
+              min="0"
+              value={formData.estTimeHrs}
+              onChange={(e) => setFormData({...formData, estTimeHrs: e.target.value})}
+              className="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="e.g., 2.5"
+            />
+          </div>
+
+          {/* Error Message */}
+          {error && (
+            <div className="text-red-400 text-sm">{error}</div>
+          )}
+
+          {/* Action Buttons */}
+          <div className="flex gap-3 pt-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 px-4 py-2 bg-slate-600 hover:bg-slate-700 text-white rounded-lg font-medium transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 text-white rounded-lg font-medium transition-colors"
+            >
+              {loading ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
@@ -516,6 +722,7 @@ export default function HomePage() {
     loading,
     createTask,
     updateTaskStatus,
+    updateTask,
     deleteTask,
     filter,
     setFilter,
@@ -526,6 +733,10 @@ export default function HomePage() {
   } = useTasks();
 
   const { user, loading: authLoading, signInWithGoogle, signOut } = useAuth();
+
+  // Move this line to the top, before any useEffect that uses hoursPerDay
+  const [hoursPerDay, setHoursPerDay] = useState(DEFAULT_HOURS_PER_DAY);
+  const [hasLoadedHoursPerDay, setHasLoadedHoursPerDay] = useState(false);
 
   // Setup notifications when user is authenticated
   useEffect(() => {
@@ -556,12 +767,35 @@ export default function HomePage() {
     }
   }, [user, authLoading]);
 
+  // Load hoursPerDay from Firestore on login
+  useEffect(() => {
+    if (user) {
+      const userRef = doc(db, 'users', user.uid);
+      getDoc(userRef).then((docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (typeof data.hoursPerDay === 'number') setHoursPerDay(data.hoursPerDay);
+        }
+        setHasLoadedHoursPerDay(true);
+      });
+    }
+  }, [user]);
+
+  // Save hoursPerDay to Firestore when it changes, but not on initial load
+  useEffect(() => {
+    if (user && hasLoadedHoursPerDay) {
+      const userRef = doc(db, 'users', user.uid);
+      setDoc(userRef, { hoursPerDay }, { merge: true });
+    }
+  }, [hoursPerDay, user, hasLoadedHoursPerDay]);
+
   // Form state
   const [title, setTitle] = useState('');
   const [area, setArea] = useState<string>('personal');
   const [importance, setImportance] = useState(5);
   const [dueDate, setDueDate] = useState('');
   const [estTimeHrs, setEstTimeHrs] = useState<number | ''>('');
+  const [description, setDescription] = useState('');
   const [adding, setAdding] = useState(false);
   
   // Filter state
@@ -570,10 +804,11 @@ export default function HomePage() {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   // Settings state
-  const [hoursPerDay, setHoursPerDay] = useState(DEFAULT_HOURS_PER_DAY);
+  // const [hoursPerDay, setHoursPerDay] = useState(DEFAULT_HOURS_PER_DAY); // This line is now redundant
 
   // Modal state
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategoryColor, setNewCategoryColor] = useState('#3b82f6');
@@ -581,6 +816,11 @@ export default function HomePage() {
 
   // Notification state
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+
+  const handleEditTask = async (taskId: string, updates: Partial<Task>) => {
+    if (!user) return;
+    await updateTask(taskId, updates);
+  };
 
   const handleAddTask = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -593,12 +833,14 @@ export default function HomePage() {
         importance,
         dueDate: dueDate ? new Date(dueDate) : undefined,
         estTimeHrs: estTimeHrs ? Number(estTimeHrs) : undefined,
+        description: description.trim() ? description.trim() : undefined,
       });
       setTitle('');
       setDueDate('');
       setEstTimeHrs('');
       setImportance(5);
       setArea('personal');
+      setDescription('');
     } finally {
       setAdding(false);
     }
@@ -855,6 +1097,15 @@ export default function HomePage() {
                   />
                 </div>
                 
+                <textarea
+                  className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-3 py-2 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  placeholder="Description or comments (optional)"
+                  value={description}
+                  onChange={e => setDescription(e.target.value)}
+                  rows={2}
+                  maxLength={300}
+                />
+                
                 <button
                   type="submit"
                   className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-medium rounded-lg px-4 py-2 transition-all duration-200 text-sm disabled:opacity-50"
@@ -967,7 +1218,7 @@ export default function HomePage() {
                 <div className="relative w-full max-w-xs sm:max-w-sm md:max-w-md h-48 sm:h-56 md:h-64 bg-slate-700/30 rounded-lg border border-slate-600">
                   {/* Axis Labels */}
                   <div className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs text-slate-400">
-                    Urgency →
+                    Urgency ←
                   </div>
                   <div className="absolute -left-12 top-1/2 transform -translate-y-1/2 -rotate-90 text-xs text-slate-400">
                     Importance →
@@ -1089,7 +1340,7 @@ export default function HomePage() {
                   Urgency calculated based on workload vs available time
                 </div>
                 <div className="text-center mt-1 text-slate-500">
-                  Click dots to see task details
+                  Click dots or task cards to see details
                 </div>
               </div>
             </div>
@@ -1121,31 +1372,36 @@ export default function HomePage() {
                   return (
                     <div 
                       key={task.id} 
-                      className={`bg-slate-700/30 backdrop-blur-sm border border-slate-600 rounded-lg p-4 transition-all hover:shadow-lg ${
+                      className={`bg-slate-700/30 backdrop-blur-sm border border-slate-600 rounded-lg p-4 transition-all hover:shadow-lg cursor-pointer ${
                         task.status === 'complete' ? 'opacity-75' : ''
                       }`}
+                      onClick={() => setSelectedTask(task)}
                     >
                       <div className="flex items-start justify-between">
                         <div className="flex-1 min-w-0">
                           <div className="flex flex-wrap items-center gap-1 sm:gap-2 mb-1">
-                            <h3 className={`text-sm font-semibold truncate flex-1 min-w-0 ${
+                            <h3 className={`text-sm font-semibold truncate flex-1 min-w-0 max-w-[220px] sm:max-w-[320px] ${
                               task.status === 'complete' ? 'text-slate-500 line-through' : 'text-white'
                             }`}>
                               {task.title}
                             </h3>
-                            <div className="flex flex-wrap items-center gap-1">
+                            <div className="flex flex-wrap items-center gap-0.5 sm:gap-1 flex-shrink">
                               <span 
-                                className="px-2 py-0.5 text-xs font-medium rounded-full text-white flex-shrink-0"
+                                className="px-1.5 py-0.5 text-xs font-medium rounded-full text-white flex-shrink-0 min-w-[40px] max-w-[60px] text-center"
                                 style={{ backgroundColor: getAreaColor(task.area) }}
                               >
                                 {task.area}
                               </span>
-                              <span className="px-2 py-0.5 text-xs font-medium bg-slate-600 text-slate-300 rounded-full flex-shrink-0">
-                                I:{task.importance}
-                              </span>
-                              <span className="px-2 py-0.5 text-xs font-medium bg-orange-600 text-white rounded-full flex-shrink-0">
-                                U:{urgencyValue}
-                              </span>
+                              {task.title.length <= 20 && (
+                                <>
+                                  <span className="px-1 py-0.5 text-xs font-medium bg-slate-600 text-slate-300 rounded-full flex-shrink-0 min-w-[32px] max-w-[40px] text-center">
+                                    I:{task.importance}
+                                  </span>
+                                  <span className="px-1 py-0.5 text-xs font-medium bg-orange-600 text-white rounded-full flex-shrink-0 min-w-[32px] max-w-[40px] text-center">
+                                    U:{urgencyValue}
+                                  </span>
+                                </>
+                              )}
                             </div>
                           </div>
                           
@@ -1162,20 +1418,31 @@ export default function HomePage() {
                               <span>Est: {task.estTimeHrs}h</span>
                             )}
                           </div>
+                          {task.description && (
+                            <div className="text-xs text-slate-400 mt-0.5 truncate max-w-full">
+                              {task.description.slice(0, 60)}{task.description.length > 60 ? '…' : ''}
+                            </div>
+                          )}
                         </div>
                         
                         <div className="flex gap-1 sm:gap-2 ml-2 sm:ml-3 flex-shrink-0">
                           {task.status !== 'complete' && (
                             <button
                               className="px-2 sm:px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-xs font-medium transition-colors"
-                              onClick={() => updateTaskStatus(task.id, 'complete')}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                updateTaskStatus(task.id, 'complete');
+                              }}
                             >
                               ✓
                             </button>
                           )}
                           <button
                             className="px-2 sm:px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs font-medium transition-colors"
-                            onClick={() => deleteTask(task.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteTask(task.id);
+                            }}
                           >
                             ×
                           </button>
@@ -1203,6 +1470,17 @@ export default function HomePage() {
           task={selectedTask}
           urgencyValue={calculateUrgency(selectedTask, hoursPerDay)}
           onClose={() => setSelectedTask(null)}
+          onEdit={(task) => setEditingTask(task)}
+        />
+      )}
+
+      {/* Edit Task Modal */}
+      {editingTask && (
+        <EditTaskModal
+          task={editingTask}
+          onClose={() => setEditingTask(null)}
+          onSave={handleEditTask}
+          categories={categories}
         />
       )}
 

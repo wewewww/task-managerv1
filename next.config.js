@@ -3,5 +3,5 @@ const nextConfig = {
   // Output configuration
   output: 'standalone',
 };
-
+ 
 module.exports = nextConfig; 
