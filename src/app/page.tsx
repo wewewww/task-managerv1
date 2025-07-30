@@ -1254,12 +1254,21 @@ export default function HomePage() {
                       // Map to pixel coordinates (responsive)
                       // X-axis: urgency (left = high, right = low)
                       // Y-axis: importance (top = high, bottom = low)
-                      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                      const containerWidth = 320; // Base width for calculations
-                      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                      const containerHeight = 256; // Base height for calculations
-                      let x = 20 + ((1 - urgencyNormalized) * 280); // 20-300px (inverted for urgency)
-                      let y = 20 + ((1 - importanceNormalized) * 196); // 20-216px (inverted for importance)
+                      // Use percentage-based positioning for responsive behavior
+                      const padding = 12; // 8px padding from container edges
+                      const availableWidth = 100 - (padding * 2); // Percentage of container width
+                      const availableHeight = 100 - (padding * 2); // Percentage of container height
+                      
+                      // Convert normalized values to percentages
+                      // Urgency: 0-1 scale, where 0 = low urgency (right), 1 = high urgency (left)
+                      // Importance: 0-1 scale, where 0 = low importance (bottom), 1 = high importance (top)
+                      let xPercent = padding + ((1 - urgencyNormalized) * availableWidth);
+                      let yPercent = padding + ((1 - importanceNormalized) * availableHeight);
+                      
+                      // Convert percentages to pixels (assuming container is positioned relatively)
+                      // These will be used as left/top values in percentage
+                      let x = xPercent;
+                      let y = yPercent;
                       
                       // Collision detection and resolution
                       const dotRadius = 6; // Half of w-3 h-3
@@ -1290,8 +1299,9 @@ export default function HomePage() {
                         const offsetX = Math.cos(angle) * radius;
                         const offsetY = Math.sin(angle) * radius;
                         
-                        x = Math.max(20, Math.min(300, 20 + ((1 - urgencyNormalized) * 280) + offsetX));
-                        y = Math.max(20, Math.min(216, 20 + ((1 - importanceNormalized) * 196) + offsetY));
+                        // Apply offset while keeping within bounds (percentage-based)
+                        x = Math.max(padding, Math.min(100 - padding, xPercent + (offsetX / 10)));
+                        y = Math.max(padding, Math.min(100 - padding, yPercent + (offsetY / 10)));
                         
                         attempts++;
                       }
@@ -1306,8 +1316,8 @@ export default function HomePage() {
                           key={task.id}
                           className="absolute w-3 h-3 rounded-full cursor-pointer transition-all hover:scale-125 hover:z-10 hover:ring-2 hover:ring-white/50"
                           style={{
-                            left: `${x}px`,
-                            top: `${y}px`,
+                            left: `${x}%`,
+                            top: `${y}%`,
                             backgroundColor: getAreaColor(task.area),
                             transform: 'translate(-50%, -50%)'
                           }}
@@ -1380,7 +1390,7 @@ export default function HomePage() {
                       <div className="flex items-start justify-between">
                         <div className="flex-1 min-w-0">
                           <div className="flex flex-wrap items-center gap-1 sm:gap-2 mb-1">
-                            <h3 className={`text-sm font-semibold truncate flex-1 min-w-0 max-w-[220px] sm:max-w-[320px] ${
+                            <h3 className={`text-sm font-semibold truncate flex-1 min-w-0 max-w-[280px] sm:max-w-[400px] ${
                               task.status === 'complete' ? 'text-slate-500 line-through' : 'text-white'
                             }`}>
                               {task.title}
@@ -1392,16 +1402,6 @@ export default function HomePage() {
                               >
                                 {task.area}
                               </span>
-                              {task.title.length <= 20 && (
-                                <>
-                                  <span className="px-1 py-0.5 text-xs font-medium bg-slate-600 text-slate-300 rounded-full flex-shrink-0 min-w-[32px] max-w-[40px] text-center">
-                                    I:{task.importance}
-                                  </span>
-                                  <span className="px-1 py-0.5 text-xs font-medium bg-orange-600 text-white rounded-full flex-shrink-0 min-w-[32px] max-w-[40px] text-center">
-                                    U:{urgencyValue}
-                                  </span>
-                                </>
-                              )}
                             </div>
                           </div>
                           
