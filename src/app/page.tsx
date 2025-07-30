@@ -214,22 +214,14 @@ function EditTaskModal({
 
       await onSave(task.id, updates);
       onClose();
-    } catch (err) {
+    } catch {
       setError('Failed to update task. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const getAreaColor = (areaValue: TaskArea | string) => {
-    const defaultArea = AREA_OPTIONS.find(opt => opt.value === areaValue);
-    if (defaultArea) return defaultArea.color;
-    
-    const customCategory = categories.find(cat => cat.name === areaValue);
-    if (customCategory) return customCategory.color;
-    
-    return '#6b7280';
-  };
+
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -1255,15 +1247,15 @@ export default function HomePage() {
                       // X-axis: urgency (left = high, right = low)
                       // Y-axis: importance (top = high, bottom = low)
                       // Use percentage-based positioning for responsive behavior
-                      const padding = 12; // 8px padding from container edges
+                      const padding = 12; // 12px padding from container edges
                       const availableWidth = 100 - (padding * 2); // Percentage of container width
                       const availableHeight = 100 - (padding * 2); // Percentage of container height
                       
                       // Convert normalized values to percentages
                       // Urgency: 0-1 scale, where 0 = low urgency (right), 1 = high urgency (left)
                       // Importance: 0-1 scale, where 0 = low importance (bottom), 1 = high importance (top)
-                      let xPercent = padding + ((1 - urgencyNormalized) * availableWidth);
-                      let yPercent = padding + ((1 - importanceNormalized) * availableHeight);
+                      const xPercent = padding + ((1 - urgencyNormalized) * availableWidth);
+                      const yPercent = padding + ((1 - importanceNormalized) * availableHeight);
                       
                       // Convert percentages to pixels (assuming container is positioned relatively)
                       // These will be used as left/top values in percentage
@@ -1378,7 +1370,6 @@ export default function HomePage() {
                 )}
                 
                 {filteredAndSortedTasks.map(task => {
-                  const urgencyValue = calculateUrgency(task, hoursPerDay);
                   return (
                     <div 
                       key={task.id} 
