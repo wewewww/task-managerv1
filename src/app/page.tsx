@@ -73,8 +73,14 @@ function TaskDetailModal({ task, urgencyValue, onClose, onEdit }: {
   const quadrant = getQuadrant(task.importance, urgencyValue);
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-800 border border-slate-600 rounded-xl p-4 sm:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+    <div 
+      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+      onClick={onClose}
+    >
+      <div 
+        className="bg-slate-800 border border-slate-600 rounded-xl p-4 sm:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-start justify-between mb-4">
           <h3 className="text-lg font-semibold text-white">Task Details</h3>
           <div className="flex items-center gap-2">
@@ -224,8 +230,14 @@ function EditTaskModal({
 
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-800 border border-slate-600 rounded-xl p-4 sm:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+    <div 
+      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+      onClick={onClose}
+    >
+      <div 
+        className="bg-slate-800 border border-slate-600 rounded-xl p-4 sm:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-start justify-between mb-4">
           <h3 className="text-lg font-semibold text-white">Edit Task</h3>
           <button
@@ -574,8 +586,14 @@ function CategoryModal({
   setShowCategoryModal: React.Dispatch<React.SetStateAction<boolean>>;
 }) {
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-slate-800 border border-slate-600 rounded-xl p-4 sm:p-6 w-full max-w-sm shadow-xl max-h-[90vh] overflow-y-auto">
+    <div 
+      className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+      onClick={() => setShowCategoryModal(false)}
+    >
+      <div 
+        className="bg-slate-800 border border-slate-600 rounded-xl p-4 sm:p-6 w-full max-w-sm shadow-xl max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-white">Manage Categories</h3>
           <button onClick={() => setShowCategoryModal(false)} className="text-slate-400 hover:text-white text-xl font-bold transition-colors">×</button>
@@ -812,6 +830,12 @@ export default function HomePage() {
   const handleEditTask = async (taskId: string, updates: Partial<Task>) => {
     if (!user) return;
     await updateTask(taskId, updates);
+    
+    // Update the selectedTask state if it's the task being edited
+    if (selectedTask && selectedTask.id === taskId) {
+      const updatedTask = { ...selectedTask, ...updates };
+      setSelectedTask(updatedTask);
+    }
   };
 
   const handleAddTask = async (e: React.FormEvent) => {
@@ -1264,8 +1288,9 @@ export default function HomePage() {
                       
                       // Collision detection and resolution
                       const dotRadius = 6; // Half of w-3 h-3
+                      const minSpacing = 4; // Minimum spacing between dots (in percentage)
                       let attempts = 0;
-                      const maxAttempts = 50;
+                      const maxAttempts = 20;
                       
                       while (attempts < maxAttempts) {
                         let hasCollision = false;
@@ -1275,7 +1300,7 @@ export default function HomePage() {
                             Math.pow(x - existing.x, 2) + Math.pow(y - existing.y, 2)
                           );
                           
-                          if (distance < dotRadius * 2.5) { // Minimum spacing between dots
+                          if (distance < minSpacing) { // Minimum spacing between dots
                             hasCollision = true;
                             break;
                           }
@@ -1285,15 +1310,15 @@ export default function HomePage() {
                           break;
                         }
                         
-                        // Try to find a new position in a spiral pattern
-                        const angle = (attempts * 0.5) * Math.PI;
-                        const radius = (attempts * 2) + dotRadius * 2.5;
+                        // Gentle spiral pattern that stays close to original position
+                        const angle = (attempts * 0.8) * Math.PI;
+                        const radius = (attempts * 1.2) + minSpacing;
                         const offsetX = Math.cos(angle) * radius;
                         const offsetY = Math.sin(angle) * radius;
                         
-                        // Apply offset while keeping within bounds (percentage-based)
-                        x = Math.max(padding, Math.min(100 - padding, xPercent + (offsetX / 10)));
-                        y = Math.max(padding, Math.min(100 - padding, yPercent + (offsetY / 10)));
+                        // Apply small offset to stay close to natural position
+                        x = Math.max(padding, Math.min(100 - padding, xPercent + offsetX));
+                        y = Math.max(padding, Math.min(100 - padding, yPercent + offsetY));
                         
                         attempts++;
                       }
