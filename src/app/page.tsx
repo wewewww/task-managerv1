@@ -7,6 +7,7 @@ import { useAuth } from '../hooks/useAuth';
 import { notificationService } from '../lib/notificationService';
 import { db } from '../lib/firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { User } from 'firebase/auth';
 
 const AREA_OPTIONS: { label: string; value: TaskArea; color: string }[] = [
   { label: 'Personal', value: 'personal', color: '#10b981' },
@@ -848,6 +849,81 @@ function CategoryModal({
   );
 }
 
+function EmailInfoModal({ 
+  user, 
+  onClose 
+}: { 
+  user: User; 
+  onClose: () => void;
+}) {
+  const taskEmailAddress = `${user.uid}@tasks.yourdomain.com`;
+  
+  const copyToClipboard = async () => {
+    try {
+      await navigator.clipboard.writeText(taskEmailAddress);
+      // You could add a toast notification here
+    } catch (err) {
+      console.error('Failed to copy to clipboard:', err);
+    }
+  };
+
+  return (
+    <div 
+      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+      onClick={onClose}
+    >
+      <div 
+        className="bg-slate-800 border border-slate-600 rounded-xl p-6 max-w-md w-full"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-semibold text-white">Email-to-Task Setup</h2>
+          <button
+            onClick={onClose}
+            className="text-slate-400 hover:text-white transition-colors"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        
+        <div className="space-y-4">
+          <div>
+            <p className="text-slate-300 mb-2">
+              Forward any email to this address to automatically create a task:
+            </p>
+            <div className="bg-slate-700 rounded-lg p-3 border border-slate-600">
+              <code className="text-green-400 break-all">{taskEmailAddress}</code>
+            </div>
+          </div>
+          
+          <button
+            onClick={copyToClipboard}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
+          >
+            Copy Email Address
+          </button>
+          
+          <div className="bg-blue-900/20 border border-blue-700 rounded-lg p-4">
+            <h3 className="text-blue-400 font-medium mb-2">Smart Features:</h3>
+            <ul className="text-slate-300 text-sm space-y-1">
+              <li>• <strong>Due dates:</strong> "tomorrow", "next week", "Due: 2024-01-15"</li>
+              <li>• <strong>Priority:</strong> "URGENT", "HIGH", "LOW" in subject</li>
+              <li>• <strong>Auto-category:</strong> Tasks go to "Inbox" category</li>
+              <li>• <strong>Email tracking:</strong> See sender and original subject</li>
+            </ul>
+          </div>
+          
+          <div className="text-xs text-slate-400">
+            <p>💡 <strong>Tip:</strong> Add this email to your contacts for easy access!</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function HomePage() {
   const {
     tasks,
@@ -946,6 +1022,7 @@ export default function HomePage() {
   const [newCategoryColor, setNewCategoryColor] = useState('#3b82f6');
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [showEmailInfo, setShowEmailInfo] = useState(false);
 
   // Notification state
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
@@ -1135,6 +1212,13 @@ export default function HomePage() {
                     {notificationsEnabled ? '🔔' : '🔕'}
                   </span>
                 </div>
+                <button
+                  onClick={() => setShowEmailInfo(true)}
+                  className="px-2 sm:px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-medium transition-colors"
+                  title="Email-to-Task Setup"
+                >
+                  📧
+                </button>
                 <button
                   onClick={signOut}
                   className="px-2 sm:px-3 py-1 bg-slate-700 hover:bg-slate-800 text-white rounded text-xs font-medium transition-colors"
@@ -1654,6 +1738,14 @@ export default function HomePage() {
             setSelectedDate(null); // Close the daily tasks modal
             setSelectedTask(task); // Open the task detail modal
           }}
+        />
+      )}
+
+      {/* Email Info Modal */}
+      {showEmailInfo && user && (
+        <EmailInfoModal
+          user={user}
+          onClose={() => setShowEmailInfo(false)}
         />
       )}
     </div>
