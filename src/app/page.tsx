@@ -380,13 +380,11 @@ function DailyTasksModal({
   date, 
   tasks, 
   onClose, 
-  onEditTask,
   onViewTask
 }: { 
   date: Date; 
   tasks: Task[]; 
   onClose: () => void; 
-  onEditTask: (task: Task) => void;
   onViewTask: (task: Task) => void;
 }) {
   const getAreaColor = (areaValue: TaskArea | string) => {
@@ -908,9 +906,9 @@ function EmailInfoModal({
           <div className="bg-blue-900/20 border border-blue-700 rounded-lg p-4">
             <h3 className="text-blue-400 font-medium mb-2">Smart Features:</h3>
             <ul className="text-slate-300 text-sm space-y-1">
-              <li>• <strong>Due dates:</strong> "tomorrow", "next week", "Due: 2024-01-15"</li>
-              <li>• <strong>Priority:</strong> "URGENT", "HIGH", "LOW" in subject</li>
-              <li>• <strong>Auto-category:</strong> Tasks go to "Inbox" category</li>
+              <li>• <strong>Due dates:</strong> &ldquo;tomorrow&rdquo;, &ldquo;next week&rdquo;, &ldquo;Due: 2024-01-15&rdquo;</li>
+              <li>• <strong>Priority:</strong> &ldquo;URGENT&rdquo;, &ldquo;HIGH&rdquo;, &ldquo;LOW&rdquo; in subject</li>
+              <li>• <strong>Auto-category:</strong> Tasks go to &ldquo;Inbox&rdquo; category</li>
               <li>• <strong>Email tracking:</strong> See sender and original subject</li>
             </ul>
           </div>
@@ -1494,7 +1492,6 @@ export default function HomePage() {
                       let y = yPercent;
                       
                       // Collision detection and resolution
-                      const dotRadius = 6; // Half of w-3 h-3
                       const minSpacing = 4; // Minimum spacing between dots (in percentage)
                       let attempts = 0;
                       const maxAttempts = 20;
@@ -1733,7 +1730,6 @@ export default function HomePage() {
           date={selectedDate}
           tasks={tasks}
           onClose={() => setSelectedDate(null)}
-          onEditTask={(task) => setEditingTask(task)}
           onViewTask={(task) => {
             setSelectedDate(null); // Close the daily tasks modal
             setSelectedTask(task); // Open the task detail modal

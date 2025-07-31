@@ -402,7 +402,7 @@ function cleanEmailBody(body: string): string {
   const textOnly = body.replace(/<[^>]*>/g, '');
   
   // Remove email signatures (common patterns)
-  const withoutSignature = textOnly.replace(/--\s*\n.*$/s, '');
+  const withoutSignature = textOnly.replace(/--\s*\n.*$/m, '');
   
   // Remove excessive whitespace
   const cleaned = withoutSignature.replace(/\n\s*\n/g, '\n\n').trim();
