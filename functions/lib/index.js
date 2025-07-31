@@ -292,6 +292,7 @@ function cleanEmailBody(body) {
 }
 // Function to process incoming emails and create tasks
 exports.processEmailTask = functions.https.onRequest(async (req, res) => {
+    var _a, _b, _c;
     // Set CORS headers
     res.set('Access-Control-Allow-Origin', '*');
     res.set('Access-Control-Allow-Methods', 'GET, POST');
@@ -305,23 +306,63 @@ exports.processEmailTask = functions.https.onRequest(async (req, res) => {
         return;
     }
     try {
-        const { from, to, subject, text, html } = req.body;
+        console.log('Received webhook data:', JSON.stringify(req.body, null, 2));
+        // Handle Mailgun webhook format
+        let from, to, subject, text, html;
+        console.log('Checking webhook format...');
+        console.log('Has event-data:', !!req.body['event-data']);
+        console.log('Has recipient:', !!req.body.recipient);
+        console.log('Available keys:', Object.keys(req.body));
+        if (req.body['event-data'] && req.body['event-data'].message) {
+            // Mailgun webhook format (event-data)
+            console.log('Using event-data format');
+            const message = req.body['event-data'].message;
+            from = (_a = message.headers) === null || _a === void 0 ? void 0 : _a.from;
+            to = (_b = message.headers) === null || _b === void 0 ? void 0 : _b.to;
+            subject = (_c = message.headers) === null || _c === void 0 ? void 0 : _c.subject;
+            text = message['body-plain'];
+            html = message['body-html'];
+        }
+        else if (req.body.recipient) {
+            // Mailgun webhook format (direct)
+            console.log('Using recipient format');
+            from = req.body.sender;
+            to = req.body.recipient;
+            subject = req.body.subject;
+            text = req.body['body-plain'];
+            html = req.body['body-html'];
+        }
+        else {
+            // Simple format (for testing)
+            console.log('Using simple format');
+            from = req.body.from;
+            to = req.body.to;
+            subject = req.body.subject;
+            text = req.body.text;
+            html = req.body.html;
+        }
+        console.log('Extracted email data:', { from, to, subject, text: text === null || text === void 0 ? void 0 : text.substring(0, 100) });
         if (!from || !to || !subject) {
+            console.log('Missing required fields:', { from, to, subject });
             res.status(400).send('Missing required email fields');
             return;
         }
         // Extract user ID from email address
         const userId = extractUserIdFromEmail(to);
+        console.log('Extracted user ID:', userId);
         if (!userId) {
+            console.log('Invalid email format:', to);
             res.status(400).send('Invalid email address format');
             return;
         }
         // Check if user exists
         const userDoc = await db.collection('users').doc(userId).get();
         if (!userDoc.exists) {
+            console.log('User not found:', userId);
             res.status(404).send('User not found');
             return;
         }
+        console.log('User found, creating task...');
         // Parse email to task
         const emailTask = parseEmailToTask({
             from,
@@ -331,12 +372,20 @@ exports.processEmailTask = functions.https.onRequest(async (req, res) => {
             html,
             receivedAt: new Date()
         });
+        console.log('Email task parsed:', emailTask);
         // Create task in Firestore
+        const taskData = Object.assign(Object.assign({}, emailTask), { dateNoted: admin.firestore.FieldValue.serverTimestamp(), status: 'open', userId });
+        // Remove undefined values to avoid Firestore errors
+        Object.keys(taskData).forEach(key => {
+            if (taskData[key] === undefined) {
+                delete taskData[key];
+            }
+        });
         const taskRef = await db
             .collection('users')
             .doc(userId)
             .collection('tasks')
-            .add(Object.assign(Object.assign({}, emailTask), { dateNoted: admin.firestore.FieldValue.serverTimestamp(), status: 'open', userId }));
+            .add(taskData);
         console.log(`Task created from email for user ${userId}:`, taskRef.id);
         // Send confirmation response
         res.status(200).json({
