@@ -1,4 +1,4 @@
-export type TaskArea = 'personal' | 'work' | 'business' | 'academic';
+export type TaskArea = 'personal' | 'work' | 'business' | 'academic' | 'inbox';
 
 export type TaskStatus = 'open' | 'complete';
 

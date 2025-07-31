@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.checkOverdueTasks = exports.updateFCMToken = exports.eveningSummary = exports.afternoonReminder = exports.morningNotification = void 0;
+exports.processEmailTask = exports.checkOverdueTasks = exports.updateFCMToken = exports.eveningSummary = exports.afternoonReminder = exports.morningNotification = void 0;
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 // Initialize Firebase Admin
@@ -220,6 +220,134 @@ exports.checkOverdueTasks = functions.pubsub
     }
     catch (error) {
         console.error('Error checking overdue tasks:', error);
+    }
+});
+// Helper function to extract user ID from email address
+function extractUserIdFromEmail(emailAddress) {
+    // Expected format: userId@tasks.yourdomain.com
+    const match = emailAddress.match(/^([^@]+)@/);
+    return match ? match[1] : null;
+}
+// Helper function to parse email content
+function parseEmailToTask(email) {
+    // Extract due date from subject (e.g., "Meeting tomorrow", "Due: 2024-01-15")
+    const dueDate = extractDueDateFromSubject(email.subject);
+    // Extract priority from subject (e.g., "URGENT:", "HIGH:", "LOW:")
+    const importance = extractImportanceFromSubject(email.subject);
+    // Clean up email body
+    const description = cleanEmailBody(email.text || email.html || '');
+    return {
+        title: email.subject || 'Email Task',
+        description,
+        area: 'inbox',
+        importance: importance || 5,
+        dueDate,
+        emailSource: {
+            sender: email.from,
+            receivedAt: email.receivedAt,
+            originalSubject: email.subject
+        }
+    };
+}
+// Helper function to extract due date from subject
+function extractDueDateFromSubject(subject) {
+    // Look for patterns like "Due: 2024-01-15", "tomorrow", "next week"
+    const dueMatch = subject.match(/due:\s*(\d{4}-\d{2}-\d{2})/i);
+    if (dueMatch) {
+        return new Date(dueMatch[1]);
+    }
+    const tomorrowMatch = subject.match(/tomorrow/i);
+    if (tomorrowMatch) {
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        return tomorrow;
+    }
+    const nextWeekMatch = subject.match(/next week/i);
+    if (nextWeekMatch) {
+        const nextWeek = new Date();
+        nextWeek.setDate(nextWeek.getDate() + 7);
+        return nextWeek;
+    }
+    return undefined;
+}
+// Helper function to extract importance from subject
+function extractImportanceFromSubject(subject) {
+    if (subject.match(/urgent|asap|immediate/i))
+        return 9;
+    if (subject.match(/high|important/i))
+        return 7;
+    if (subject.match(/low|minor/i))
+        return 3;
+    return 5; // Default importance
+}
+// Helper function to clean email body
+function cleanEmailBody(body) {
+    // Remove HTML tags if present
+    const textOnly = body.replace(/<[^>]*>/g, '');
+    // Remove email signatures (common patterns)
+    const withoutSignature = textOnly.replace(/--\s*\n.*$/s, '');
+    // Remove excessive whitespace
+    const cleaned = withoutSignature.replace(/\n\s*\n/g, '\n\n').trim();
+    return cleaned || 'No description provided';
+}
+// Function to process incoming emails and create tasks
+exports.processEmailTask = functions.https.onRequest(async (req, res) => {
+    // Set CORS headers
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Access-Control-Allow-Methods', 'GET, POST');
+    res.set('Access-Control-Allow-Headers', 'Content-Type');
+    if (req.method === 'OPTIONS') {
+        res.status(204).send('');
+        return;
+    }
+    if (req.method !== 'POST') {
+        res.status(405).send('Method not allowed');
+        return;
+    }
+    try {
+        const { from, to, subject, text, html } = req.body;
+        if (!from || !to || !subject) {
+            res.status(400).send('Missing required email fields');
+            return;
+        }
+        // Extract user ID from email address
+        const userId = extractUserIdFromEmail(to);
+        if (!userId) {
+            res.status(400).send('Invalid email address format');
+            return;
+        }
+        // Check if user exists
+        const userDoc = await db.collection('users').doc(userId).get();
+        if (!userDoc.exists) {
+            res.status(404).send('User not found');
+            return;
+        }
+        // Parse email to task
+        const emailTask = parseEmailToTask({
+            from,
+            to,
+            subject,
+            text,
+            html,
+            receivedAt: new Date()
+        });
+        // Create task in Firestore
+        const taskRef = await db
+            .collection('users')
+            .doc(userId)
+            .collection('tasks')
+            .add(Object.assign(Object.assign({}, emailTask), { dateNoted: admin.firestore.FieldValue.serverTimestamp(), status: 'open', userId }));
+        console.log(`Task created from email for user ${userId}:`, taskRef.id);
+        // Send confirmation response
+        res.status(200).json({
+            success: true,
+            taskId: taskRef.id,
+            message: 'Task created successfully from email'
+        });
+    }
+    catch (error) {
+        console.error('Error processing email task:', error);
+        res.status(500).send('Internal server error');
     }
 });
 //# sourceMappingURL=index.js.map

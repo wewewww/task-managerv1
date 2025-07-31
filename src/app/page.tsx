@@ -13,6 +13,7 @@ const AREA_OPTIONS: { label: string; value: TaskArea; color: string }[] = [
   { label: 'Work', value: 'work', color: '#3b82f6' },
   { label: 'Business', value: 'business', color: '#f59e0b' },
   { label: 'Academic', value: 'academic', color: '#8b5cf6' },
+  { label: 'Inbox', value: 'inbox', color: '#6b7280' },
 ];
 
 // Default hours per day available for tasks
@@ -374,7 +375,127 @@ function EditTaskModal({
 }
 
 // Calendar Workload Component
-function CalendarWorkload({ tasks, hoursPerDay }: { tasks: Task[], hoursPerDay: number }) {
+function DailyTasksModal({ 
+  date, 
+  tasks, 
+  onClose, 
+  onEditTask,
+  onViewTask
+}: { 
+  date: Date; 
+  tasks: Task[]; 
+  onClose: () => void; 
+  onEditTask: (task: Task) => void;
+  onViewTask: (task: Task) => void;
+}) {
+  const getAreaColor = (areaValue: TaskArea | string) => {
+    const defaultArea = AREA_OPTIONS.find(opt => opt.value === areaValue);
+    if (defaultArea) return defaultArea.color;
+    return '#6b7280';
+  };
+
+  const dateStr = date.toDateString();
+  const tasksForDay = tasks.filter(task => {
+    if (!task.dueDate || task.status === 'complete') return false;
+    return new Date(task.dueDate).toDateString() === dateStr;
+  });
+
+  const totalHours = tasksForDay.reduce((sum, task) => sum + (task.estTimeHrs || 0), 0);
+
+  return (
+    <div 
+      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+      onClick={onClose}
+    >
+      <div 
+        className="bg-slate-800 border border-slate-600 rounded-xl p-4 sm:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between mb-4">
+          <h3 className="text-lg font-semibold text-white">
+            Tasks for {date.toLocaleDateString('en-US', { 
+              weekday: 'long',
+              year: 'numeric', 
+              month: 'long', 
+              day: 'numeric' 
+            })}
+          </h3>
+          <button
+            onClick={onClose}
+            className="text-slate-400 hover:text-white text-xl font-bold"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          {/* Summary */}
+          <div className="bg-slate-700/50 rounded-lg p-3">
+            <div className="flex justify-between items-center">
+              <span className="text-slate-400">Total Tasks:</span>
+              <span className="text-white font-medium">{tasksForDay.length}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-slate-400">Total Hours:</span>
+              <span className="text-white font-medium">{totalHours}h</span>
+            </div>
+          </div>
+
+          {/* Tasks List */}
+          {tasksForDay.length === 0 ? (
+            <div className="text-center py-8">
+              <div className="text-slate-400 text-sm mb-1">No tasks due on this day</div>
+              <p className="text-slate-500 text-xs">You have a free day!</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {tasksForDay.map(task => (
+                <div 
+                  key={task.id}
+                  className="bg-slate-700/30 border border-slate-600 rounded-lg p-3 cursor-pointer hover:bg-slate-700/50 transition-colors"
+                  onClick={() => onViewTask(task)}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h4 className="text-white font-medium truncate">{task.title}</h4>
+                        <span 
+                          className="px-2 py-0.5 text-xs font-medium rounded-full text-white flex-shrink-0"
+                          style={{ backgroundColor: getAreaColor(task.area) }}
+                        >
+                          {task.area}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-slate-400">
+                        <span>I: {task.importance}/10</span>
+                        {task.estTimeHrs && <span>Est: {task.estTimeHrs}h</span>}
+                      </div>
+                      {task.description && (
+                        <div className="text-xs text-slate-400 mt-1 truncate">
+                          {task.description}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CalendarWorkload({ 
+  tasks, 
+  hoursPerDay, 
+  onDayClick 
+}: { 
+  tasks: Task[]; 
+  hoursPerDay: number; 
+  onDayClick: (date: Date) => void;
+}) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const today = new Date();
   const currentMonth = currentDate.getMonth();
@@ -524,6 +645,7 @@ function CalendarWorkload({ tasks, hoursPerDay }: { tasks: Task[], hoursPerDay: 
                   isToday ? 'ring-1 ring-blue-400' : ''
                 }`}
                 title={`${day} ${monthNames[currentMonth]}\n${workload.totalHours}h workload (${Math.round(workload.workloadRatio * 100)}%)\n${workload.tasks.length} tasks due`}
+                onClick={() => onDayClick(new Date(currentYear, currentMonth, day))}
               >
                 <span className={`text-xs font-medium ${
                   workload.workloadRatio > 0 ? 'text-white' : 'text-slate-400'
@@ -823,6 +945,7 @@ export default function HomePage() {
   const [newCategoryName, setNewCategoryName] = useState('');
   const [newCategoryColor, setNewCategoryColor] = useState('#3b82f6');
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
   // Notification state
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
@@ -1348,7 +1471,11 @@ export default function HomePage() {
               </div>
               
               {/* Calendar Workload */}
-              <CalendarWorkload tasks={tasks} hoursPerDay={hoursPerDay} />
+              <CalendarWorkload 
+                tasks={tasks} 
+                hoursPerDay={hoursPerDay} 
+                onDayClick={(date) => setSelectedDate(date)}
+              />
               
               {/* Matrix Legend */}
               <div className="mt-4 text-xs text-slate-400">
@@ -1513,6 +1640,20 @@ export default function HomePage() {
           newCategoryColor={newCategoryColor}
           setNewCategoryColor={setNewCategoryColor}
           setShowCategoryModal={setShowCategoryModal}
+        />
+      )}
+
+      {/* Daily Tasks Modal */}
+      {selectedDate && (
+        <DailyTasksModal
+          date={selectedDate}
+          tasks={tasks}
+          onClose={() => setSelectedDate(null)}
+          onEditTask={(task) => setEditingTask(task)}
+          onViewTask={(task) => {
+            setSelectedDate(null); // Close the daily tasks modal
+            setSelectedTask(task); // Open the task detail modal
+          }}
         />
       )}
     </div>
