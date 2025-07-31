@@ -856,7 +856,7 @@ function EmailInfoModal({
   user: User; 
   onClose: () => void;
 }) {
-  const taskEmailAddress = `${user.uid}@tasks.yourdomain.com`;
+  const taskEmailAddress = `${user.uid}@sandboxc92822199c92457a8ed44bcb44760863.mailgun.org`;
   
   const copyToClipboard = async () => {
     try {
