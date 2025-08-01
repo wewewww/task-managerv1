@@ -17,6 +17,7 @@ export const useTasks = () => {
   const [filter, setFilter] = useState<{
     area?: TaskArea | string;
     status?: TaskStatus;
+    quadrant?: 'urgent-important' | 'important-not-urgent' | 'urgent-not-important' | 'not-urgent-not-important';
   }>({});
 
   // Load tasks

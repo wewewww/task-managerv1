@@ -49,6 +49,26 @@ function calculateUrgency(task: Task, hoursPerDay: number = DEFAULT_HOURS_PER_DA
   return Math.min(10, Math.max(1, urgency));
 }
 
+// Helper functions for quadrant calculations
+function getQuadrant(importance: number, urgency: number) {
+  if (importance >= 6 && urgency >= 6) return "urgent-important";
+  if (importance >= 6 && urgency < 6) return "important-not-urgent";
+  if (importance < 6 && urgency >= 6) return "urgent-not-important";
+  return "not-urgent-not-important";
+}
+
+function getQuadrantLabel(quadrant: string) {
+  switch (quadrant) {
+    case 'urgent-important': return 'Urgent & Important';
+    case 'important-not-urgent': return 'Important, Not Urgent';
+    case 'urgent-not-important': return 'Urgent, Not Important';
+    case 'not-urgent-not-important': return 'Not Urgent, Not Important';
+    default: return '';
+  }
+}
+
+
+
 // Task Detail Modal Component
 function TaskDetailModal({ task, urgencyValue, onClose, onEdit }: { 
   task: Task; 
@@ -65,14 +85,10 @@ function TaskDetailModal({ task, urgencyValue, onClose, onEdit }: {
     return '#6b7280';
   };
 
-  const getQuadrant = (importance: number, urgency: number) => {
-    if (importance >= 6 && urgency >= 6) return "Urgent & Important";
-    if (importance >= 6 && urgency < 6) return "Important, Not Urgent";
-    if (importance < 6 && urgency >= 6) return "Urgent, Not Important";
-    return "Not Urgent, Not Important";
-  };
+
 
   const quadrant = getQuadrant(task.importance, urgencyValue);
+  const quadrantLabel = getQuadrantLabel(quadrant);
 
   return (
     <div 
@@ -124,7 +140,7 @@ function TaskDetailModal({ task, urgencyValue, onClose, onEdit }: {
           {/* Quadrant Information */}
           <div className="bg-slate-700/50 rounded-lg p-3">
             <div className="text-sm text-slate-300 mb-1">Matrix Position:</div>
-            <div className="text-white font-medium">{quadrant}</div>
+            <div className="text-white font-medium">{quadrantLabel}</div>
           </div>
 
           {/* Time Information */}
@@ -631,7 +647,7 @@ function CalendarWorkload({
         <div className="grid grid-cols-7 gap-1">
           {calendarDays.map((day, index) => {
             if (day === null) {
-              return <div key={index} className="h-6 sm:h-7"></div>;
+              return <div key={`empty-${index}`} className="h-6 sm:h-7"></div>;
             }
             
             const workload = getDayWorkload(day);
@@ -639,7 +655,7 @@ function CalendarWorkload({
             
             return (
               <div
-                key={day}
+                key={`day-${currentYear}-${currentMonth}-${day}`}
                 className={`h-6 sm:h-7 rounded border ${getWorkloadColor(workload.workloadRatio)} ${getWorkloadBorder(workload.workloadRatio)} flex items-center justify-center cursor-pointer hover:scale-105 transition-transform ${
                   isToday ? 'ring-1 ring-blue-400' : ''
                 }`}
@@ -1080,6 +1096,16 @@ export default function HomePage() {
       if (searchTerm && !task.title.toLowerCase().includes(searchTerm.toLowerCase())) {
         return false;
       }
+      
+      // Quadrant filter
+      if (filter.quadrant) {
+        const urgencyValue = calculateUrgency(task, hoursPerDay);
+        const taskQuadrant = getQuadrant(task.importance, urgencyValue);
+        if (taskQuadrant !== filter.quadrant) {
+          return false;
+        }
+      }
+      
       return true;
     })
     .sort((a, b) => {
@@ -1386,6 +1412,21 @@ export default function HomePage() {
                 </div>
 
                 <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-1">Quadrant</label>
+                  <select
+                    value={filter.quadrant || 'all'}
+                    onChange={(e) => setFilter(prev => ({ ...prev, quadrant: e.target.value === 'all' ? undefined : e.target.value as 'urgent-important' | 'important-not-urgent' | 'urgent-not-important' | 'not-urgent-not-important' }))}
+                    className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  >
+                    <option value="all">All Quadrants</option>
+                    <option value="urgent-important">🔴 Urgent & Important</option>
+                    <option value="important-not-urgent">🔵 Important, Not Urgent</option>
+                    <option value="urgent-not-important">🟡 Urgent, Not Important</option>
+                    <option value="not-urgent-not-important">⚪ Not Urgent, Not Important</option>
+                  </select>
+                </div>
+
+                <div>
                   <label className="block text-xs font-medium text-slate-300 mb-1">Sort</label>
                   <select
                     value={`${sortBy}-${sortOrder}`}
@@ -1402,7 +1443,7 @@ export default function HomePage() {
                   </select>
                 </div>
 
-                {(searchTerm || filter.area || filter.status) && (
+                {(searchTerm || filter.area || filter.status || filter.quadrant) && (
                   <button
                     onClick={() => {
                       setSearchTerm('');
