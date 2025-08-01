@@ -333,52 +333,81 @@ exports.processEmailTask = functions.https.onRequest(async (req, res) => {
         return;
     }
     try {
-        console.log('Received webhook data:', JSON.stringify(req.body, null, 2));
+        console.log('=== EMAIL WEBHOOK RECEIVED ===');
+        console.log('Request method:', req.method);
+        console.log('Content-Type:', req.headers['content-type']);
+        console.log('Body type:', typeof req.body);
+        console.log('Body keys:', Object.keys(req.body || {}));
+        // Log the full body in a more readable way
+        if (req.body) {
+            console.log('Full webhook body:');
+            Object.keys(req.body).forEach(key => {
+                const value = req.body[key];
+                if (typeof value === 'object') {
+                    console.log(`  ${key}:`, JSON.stringify(value, null, 2));
+                }
+                else {
+                    console.log(`  ${key}:`, value);
+                }
+            });
+        }
         // Handle Mailgun webhook format
         let from, to, subject, text, html;
-        console.log('Checking webhook format...');
+        console.log('=== EXTRACTING EMAIL DATA ===');
         console.log('Has event-data:', !!req.body['event-data']);
         console.log('Has recipient:', !!req.body.recipient);
-        console.log('Available keys:', Object.keys(req.body));
+        console.log('Has sender:', !!req.body.sender);
+        console.log('Has from:', !!req.body.from);
+        console.log('Has to:', !!req.body.to);
+        console.log('Has subject:', !!req.body.subject);
         if (req.body['event-data'] && req.body['event-data'].message) {
             // Mailgun webhook format (event-data)
             console.log('Using event-data format');
             const message = req.body['event-data'].message;
-            from = (_a = message.headers) === null || _a === void 0 ? void 0 : _a.from;
-            to = (_b = message.headers) === null || _b === void 0 ? void 0 : _b.to;
-            subject = (_c = message.headers) === null || _c === void 0 ? void 0 : _c.subject;
-            text = message['body-plain'];
-            html = message['body-html'];
-            // For forwarded emails, try to get content from different fields
-            if (!text && !html) {
-                console.log('No body content found, checking alternative fields...');
-                text = message['stripped-text'] || message['stripped-html'] || message['body'] || '';
-                html = message['stripped-html'] || message['body-html'] || '';
-            }
+            console.log('Message keys:', Object.keys(message || {}));
+            from = ((_a = message.headers) === null || _a === void 0 ? void 0 : _a.from) || message.from;
+            to = ((_b = message.headers) === null || _b === void 0 ? void 0 : _b.to) || message.to;
+            subject = ((_c = message.headers) === null || _c === void 0 ? void 0 : _c.subject) || message.subject;
+            text = message['body-plain'] || message['stripped-text'] || message['body'];
+            html = message['body-html'] || message['stripped-html'];
+            console.log('Extracted from event-data:', { from, to, subject, textLength: text === null || text === void 0 ? void 0 : text.length, htmlLength: html === null || html === void 0 ? void 0 : html.length });
         }
         else if (req.body.recipient) {
             // Mailgun webhook format (direct)
             console.log('Using recipient format');
-            from = req.body.sender;
-            to = req.body.recipient;
+            from = req.body.sender || req.body.from;
+            to = req.body.recipient || req.body.to;
             subject = req.body.subject;
-            text = req.body['body-plain'];
-            html = req.body['body-html'];
-            // For forwarded emails, try alternative fields
-            if (!text && !html) {
-                console.log('No body content found, checking alternative fields...');
-                text = req.body['stripped-text'] || req.body['stripped-html'] || req.body['body'] || '';
-                html = req.body['stripped-html'] || req.body['body-html'] || '';
-            }
+            text = req.body['body-plain'] || req.body['stripped-text'] || req.body['body'] || req.body.text;
+            html = req.body['body-html'] || req.body['stripped-html'] || req.body.html;
+            console.log('Extracted from recipient format:', { from, to, subject, textLength: text === null || text === void 0 ? void 0 : text.length, htmlLength: html === null || html === void 0 ? void 0 : html.length });
         }
-        else {
+        else if (req.body.from || req.body.to || req.body.subject) {
             // Simple format (for testing)
             console.log('Using simple format');
             from = req.body.from;
             to = req.body.to;
             subject = req.body.subject;
-            text = req.body.text;
-            html = req.body.html;
+            text = req.body.text || req.body['body-plain'] || req.body['stripped-text'];
+            html = req.body.html || req.body['body-html'] || req.body['stripped-html'];
+            console.log('Extracted from simple format:', { from, to, subject, textLength: text === null || text === void 0 ? void 0 : text.length, htmlLength: html === null || html === void 0 ? void 0 : html.length });
+        }
+        else {
+            // Try to extract from any available fields
+            console.log('Trying to extract from any available fields...');
+            console.log('All available fields:', Object.keys(req.body));
+            // Look for common email fields in the entire body
+            const bodyStr = JSON.stringify(req.body);
+            const fromMatch = bodyStr.match(/"from":\s*"([^"]+)"/);
+            const toMatch = bodyStr.match(/"to":\s*"([^"]+)"/);
+            const subjectMatch = bodyStr.match(/"subject":\s*"([^"]+)"/);
+            from = fromMatch ? fromMatch[1] : undefined;
+            to = toMatch ? toMatch[1] : undefined;
+            subject = subjectMatch ? subjectMatch[1] : undefined;
+            // Try to find body content
+            text = req.body['body-plain'] || req.body['stripped-text'] || req.body['body'] || req.body.text || '';
+            html = req.body['body-html'] || req.body['stripped-html'] || req.body.html || '';
+            console.log('Extracted from fallback:', { from, to, subject, textLength: text === null || text === void 0 ? void 0 : text.length, htmlLength: html === null || html === void 0 ? void 0 : html.length });
         }
         console.log('Extracted email data:', {
             from,
