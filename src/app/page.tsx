@@ -870,32 +870,23 @@ function EmailInfoModal({
   user: User; 
   onClose: () => void;
 }) {
-  const taskEmailAddress = `${user.uid}@sandboxc92822199c92457a8ed44bcb44760863.mailgun.org`;
-  
+  const taskEmail = `${user.uid}@sandboxc92822199c92457a8ed44bcb44760863.mailgun.org`;
+
   const copyToClipboard = async () => {
     try {
-      await navigator.clipboard.writeText(taskEmailAddress);
+      await navigator.clipboard.writeText(taskEmail);
       // You could add a toast notification here
     } catch (err) {
-      console.error('Failed to copy to clipboard:', err);
+      console.error('Failed to copy:', err);
     }
   };
 
   return (
-    <div 
-      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-      onClick={onClose}
-    >
-      <div 
-        className="bg-slate-800 border border-slate-600 rounded-xl p-6 max-w-md w-full"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold text-white">Email-to-Task Setup</h2>
-          <button
-            onClick={onClose}
-            className="text-slate-400 hover:text-white transition-colors"
-          >
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-slate-800 rounded-xl p-6 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-bold text-white">📧 Email-to-Task</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-white">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -904,34 +895,243 @@ function EmailInfoModal({
         
         <div className="space-y-4">
           <div>
-            <p className="text-slate-300 mb-2">
-              Forward any email to this address to automatically create a task:
+            <p className="text-slate-300 text-sm mb-2">
+              Send emails to this address to automatically create tasks:
             </p>
-            <div className="bg-slate-700 rounded-lg p-3 border border-slate-600">
-              <code className="text-green-400 break-all">{taskEmailAddress}</code>
+            <div className="flex items-center gap-2">
+              <code className="bg-slate-700 px-3 py-2 rounded text-sm text-blue-300 flex-1 break-all">
+                {taskEmail}
+              </code>
+              <button
+                onClick={copyToClipboard}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded text-sm transition"
+              >
+                Copy
+              </button>
             </div>
           </div>
           
-          <button
-            onClick={copyToClipboard}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors"
-          >
-            Copy Email Address
-          </button>
-          
-          <div className="bg-blue-900/20 border border-blue-700 rounded-lg p-4">
-            <h3 className="text-blue-400 font-medium mb-2">Smart Features:</h3>
-            <ul className="text-slate-300 text-sm space-y-1">
-              <li>• <strong>Due dates:</strong> &ldquo;tomorrow&rdquo;, &ldquo;next week&rdquo;, &ldquo;Due: 2024-01-15&rdquo;</li>
-              <li>• <strong>Priority:</strong> &ldquo;URGENT&rdquo;, &ldquo;HIGH&rdquo;, &ldquo;LOW&rdquo; in subject</li>
-              <li>• <strong>Auto-category:</strong> Tasks go to &ldquo;Inbox&rdquo; category</li>
-              <li>• <strong>Email tracking:</strong> See sender and original subject</li>
+          <div className="bg-slate-700/50 rounded-lg p-4">
+            <h3 className="font-semibold text-white mb-2">Smart Features:</h3>
+            <ul className="text-sm text-slate-300 space-y-1">
+              <li>• <strong>Subject line</strong> becomes task title</li>
+              <li>• <strong>Email body</strong> becomes task description</li>
+              <li>• <strong>Due dates</strong> in subject (e.g., &ldquo;Meeting tomorrow&rdquo;)</li>
+              <li>• <strong>Importance</strong> from keywords (URGENT, ASAP, etc.)</li>
+              <li>• <strong>Auto-category</strong>: Inbox (grey)</li>
             </ul>
           </div>
           
-          <div className="text-xs text-slate-400">
-            <p>💡 <strong>Tip:</strong> Add this email to your contacts for easy access!</p>
+          <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-3">
+            <p className="text-sm text-blue-300">
+              <strong>Example:</strong> Send an email with subject &ldquo;Team Meeting URGENT&rdquo; 
+              and it will create a high-priority task due soon!
+            </p>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AuthModal({ onClose }: { onClose: () => void }) {
+  const { signInWithGoogle, signUpWithEmail, signInWithEmail, resetPassword, error, clearError } = useAuth();
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [isResetPassword, setIsResetPassword] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    clearError();
+
+    try {
+      if (isResetPassword) {
+        await resetPassword(email);
+        alert('Password reset email sent! Check your inbox.');
+        setIsResetPassword(false);
+      } else if (isSignUp) {
+        if (password !== confirmPassword) {
+          throw new Error('Passwords do not match');
+        }
+        if (password.length < 6) {
+          throw new Error('Password must be at least 6 characters');
+        }
+        await signUpWithEmail(email, password);
+      } else {
+        await signInWithEmail(email, password);
+      }
+    } catch (err: unknown) {
+      // Error is handled by the auth hook
+      console.error('Authentication error:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setLoading(true);
+    clearError();
+    try {
+      await signInWithGoogle();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-slate-800 rounded-xl p-6 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-bold text-white">
+            {isResetPassword ? 'Reset Password' : (isSignUp ? 'Create Account' : 'Sign In')}
+          </h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-white">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {error && (
+          <div className="bg-red-900/20 border border-red-500/30 rounded-lg p-3 mb-4">
+            <p className="text-red-300 text-sm">{error}</p>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label htmlFor="email" className="block text-sm font-medium text-slate-300 mb-1">
+              Email
+            </label>
+            <input
+              type="email"
+              id="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Enter your email"
+            />
+          </div>
+
+          {!isResetPassword && (
+            <div>
+              <label htmlFor="password" className="block text-sm font-medium text-slate-300 mb-1">
+                Password
+              </label>
+              <input
+                type="password"
+                id="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Enter your password"
+              />
+            </div>
+          )}
+
+          {isSignUp && !isResetPassword && (
+            <div>
+              <label htmlFor="confirmPassword" className="block text-sm font-medium text-slate-300 mb-1">
+                Confirm Password
+              </label>
+              <input
+                type="password"
+                id="confirmPassword"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+                className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Confirm your password"
+              />
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 text-white font-semibold py-2 px-4 rounded-lg transition"
+          >
+            {loading ? 'Loading...' : (isResetPassword ? 'Send Reset Email' : (isSignUp ? 'Create Account' : 'Sign In'))}
+          </button>
+        </form>
+
+        {!isResetPassword && (
+          <>
+            <div className="relative my-6">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-slate-600"></div>
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="px-2 bg-slate-800 text-slate-400">Or continue with</span>
+              </div>
+            </div>
+
+            <button
+              onClick={handleGoogleSignIn}
+              disabled={loading}
+              className="w-full flex items-center justify-center gap-2 bg-white text-slate-800 font-semibold px-4 py-2 rounded-lg shadow hover:bg-blue-100 transition disabled:opacity-50"
+            >
+              <svg width="20" height="20" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <g clipPath="url(#clip0_17_40)">
+                  <path d="M47.5 24.5C47.5 22.6 47.3 20.8 47 19H24V29H37.1C36.5 32.1 34.5 34.7 31.7 36.4V42H39.3C44 38.1 47.5 32.1 47.5 24.5Z" fill="#4285F4"/>
+                  <path d="M24 48C30.6 48 36.1 45.9 39.3 42L31.7 36.4C29.9 37.6 27.7 38.3 24 38.3C18.7 38.3 14.1 34.7 12.5 29.9H4.7V35.7C7.9 42.1 15.3 48 24 48Z" fill="#34A853"/>
+                  <path d="M12.5 29.9C12.1 28.7 11.9 27.4 11.9 26C11.9 24.6 12.1 23.3 12.5 22.1V16.3H4.7C3.2 19.1 2.5 22.4 2.5 26C2.5 29.6 3.2 32.9 4.7 35.7L12.5 29.9Z" fill="#FBBC05"/>
+                  <path d="M24 9.7C27.1 9.7 29.5 10.8 31.2 12.3L39.4 4.1C36.1 1.1 30.6 0 24 0C15.3 0 7.9 5.9 4.7 16.3L12.5 22.1C14.1 17.3 18.7 13.7 24 13.7V9.7Z" fill="#EA4335"/>
+                </g>
+                <defs>
+                  <clipPath id="clip0_17_40">
+                    <rect width="48" height="48" fill="white"/>
+                  </clipPath>
+                </defs>
+              </svg>
+              Google
+            </button>
+          </>
+        )}
+
+        <div className="mt-6 text-center">
+          {isResetPassword ? (
+            <button
+              onClick={() => {
+                setIsResetPassword(false);
+                setIsSignUp(false);
+                clearError();
+              }}
+              className="text-blue-400 hover:text-blue-300 text-sm"
+            >
+              Back to Sign In
+            </button>
+          ) : (
+            <div className="space-y-2">
+              <button
+                onClick={() => {
+                  setIsSignUp(!isSignUp);
+                  setIsResetPassword(false);
+                  clearError();
+                }}
+                className="text-blue-400 hover:text-blue-300 text-sm block"
+              >
+                {isSignUp ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}
+              </button>
+              {!isSignUp && (
+                <button
+                  onClick={() => {
+                    setIsResetPassword(true);
+                    clearError();
+                  }}
+                  className="text-blue-400 hover:text-blue-300 text-sm block"
+                >
+                  Forgot your password?
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -954,11 +1154,12 @@ export default function HomePage() {
     deleteCategory,
   } = useTasks();
 
-  const { user, loading: authLoading, signInWithGoogle, signOut } = useAuth();
+  const { user, loading: authLoading, signOut } = useAuth();
 
   // Move this line to the top, before any useEffect that uses hoursPerDay
   const [hoursPerDay, setHoursPerDay] = useState(DEFAULT_HOURS_PER_DAY);
   const [hasLoadedHoursPerDay, setHasLoadedHoursPerDay] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
   // Setup notifications when user is authenticated
   useEffect(() => {
@@ -1149,32 +1350,21 @@ export default function HomePage() {
     );
   }
 
-  // If not logged in, show Google sign-in button
+  // If not logged in, show authentication modal
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
         <div className="bg-slate-800/70 border border-slate-700 rounded-xl p-8 flex flex-col items-center shadow-xl">
-          <h1 className="text-2xl font-bold text-white mb-4">Sign in to Task Manager</h1>
+          <h1 className="text-2xl font-bold text-white mb-4">Welcome to Task Manager</h1>
+          <p className="text-slate-300 text-center mb-6">Organize your life across all areas with our powerful task management system</p>
           <button
-            onClick={signInWithGoogle}
-            className="flex items-center gap-2 bg-white text-slate-800 font-semibold px-6 py-2 rounded-lg shadow hover:bg-blue-100 transition mb-2"
+            onClick={() => setShowAuthModal(true)}
+            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-8 py-3 rounded-lg shadow-lg transition"
           >
-            <svg width="20" height="20" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <g clipPath="url(#clip0_17_40)">
-                <path d="M47.5 24.5C47.5 22.6 47.3 20.8 47 19H24V29H37.1C36.5 32.1 34.5 34.7 31.7 36.4V42H39.3C44 38.1 47.5 32.1 47.5 24.5Z" fill="#4285F4"/>
-                <path d="M24 48C30.6 48 36.1 45.9 39.3 42L31.7 36.4C29.9 37.6 27.7 38.3 24 38.3C18.7 38.3 14.1 34.7 12.5 29.9H4.7V35.7C7.9 42.1 15.3 48 24 48Z" fill="#34A853"/>
-                <path d="M12.5 29.9C12.1 28.7 11.9 27.4 11.9 26C11.9 24.6 12.1 23.3 12.5 22.1V16.3H4.7C3.2 19.1 2.5 22.4 2.5 26C2.5 29.6 3.2 32.9 4.7 35.7L12.5 29.9Z" fill="#FBBC05"/>
-                <path d="M24 9.7C27.1 9.7 29.5 10.8 31.2 12.3L39.4 4.1C36.1 1.1 30.6 0 24 0C15.3 0 7.9 5.9 4.7 16.3L12.5 22.1C14.1 17.3 18.7 13.7 24 13.7V9.7Z" fill="#EA4335"/>
-              </g>
-              <defs>
-                <clipPath id="clip0_17_40">
-                  <rect width="48" height="48" fill="white"/>
-                </clipPath>
-              </defs>
-            </svg>
-            Sign in with Google
+            Get Started
           </button>
         </div>
+        {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} />}
       </div>
     );
   }
