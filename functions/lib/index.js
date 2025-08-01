@@ -74,10 +74,10 @@ async function sendNotificationToUser(userId, title, body, data) {
         console.error(`Error sending notification to user ${userId}:`, error);
     }
 }
-// Morning notification (8:00 AM European time)
+// Morning notification (8:00 AM Paris time)
 exports.morningNotification = functions.pubsub
     .schedule('0 8 * * *')
-    .timeZone('Europe/Madrid')
+    .timeZone('Europe/Paris')
     .onRun(async (context) => {
     console.log('Running morning notification...');
     try {
@@ -106,10 +106,10 @@ exports.morningNotification = functions.pubsub
         console.error('Error in morning notification:', error);
     }
 });
-// Afternoon reminder (1:00 PM European time)
+// Afternoon reminder (1:00 PM Paris time)
 exports.afternoonReminder = functions.pubsub
     .schedule('0 13 * * *')
-    .timeZone('Europe/Madrid')
+    .timeZone('Europe/Paris')
     .onRun(async (context) => {
     console.log('Running afternoon reminder...');
     try {
@@ -133,10 +133,10 @@ exports.afternoonReminder = functions.pubsub
         console.error('Error in afternoon reminder:', error);
     }
 });
-// Evening summary (6:00 PM European time)
+// Evening summary (6:00 PM Paris time)
 exports.eveningSummary = functions.pubsub
     .schedule('0 18 * * *')
-    .timeZone('Europe/Madrid')
+    .timeZone('Europe/Paris')
     .onRun(async (context) => {
     console.log('Running evening summary...');
     try {
@@ -199,8 +199,8 @@ exports.updateFCMToken = functions.https.onCall(async (data, context) => {
 });
 // Function to send overdue task notifications
 exports.checkOverdueTasks = functions.pubsub
-    .schedule('0 9,15 * * *') // 9 AM and 3 PM daily
-    .timeZone('Europe/Madrid')
+    .schedule('0 9 * * *') // 9 AM daily only
+    .timeZone('Europe/Paris')
     .onRun(async (context) => {
     console.log('Checking for overdue tasks...');
     try {
@@ -285,7 +285,7 @@ function cleanEmailBody(body) {
     // Remove HTML tags if present
     const textOnly = body.replace(/<[^>]*>/g, '');
     // Remove email signatures (common patterns)
-    const withoutSignature = textOnly.replace(/--\s*\n.*$/s, '');
+    const withoutSignature = textOnly.replace(/--\s*\n.*$/m, '');
     // Remove excessive whitespace
     const cleaned = withoutSignature.replace(/\n\s*\n/g, '\n\n').trim();
     return cleaned || 'No description provided';

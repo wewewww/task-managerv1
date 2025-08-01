@@ -101,10 +101,10 @@ async function sendNotificationToUser(userId: string, title: string, body: strin
   }
 }
 
-// Morning notification (8:00 AM European time)
+// Morning notification (8:00 AM Paris time)
 export const morningNotification = functions.pubsub
   .schedule('0 8 * * *')
-  .timeZone('Europe/Madrid')
+  .timeZone('Europe/Paris')
   .onRun(async (context) => {
     console.log('Running morning notification...');
     
@@ -148,10 +148,10 @@ export const morningNotification = functions.pubsub
     }
   });
 
-// Afternoon reminder (1:00 PM European time)
+// Afternoon reminder (1:00 PM Paris time)
 export const afternoonReminder = functions.pubsub
   .schedule('0 13 * * *')
-  .timeZone('Europe/Madrid')
+  .timeZone('Europe/Paris')
   .onRun(async (context) => {
     console.log('Running afternoon reminder...');
     
@@ -186,10 +186,10 @@ export const afternoonReminder = functions.pubsub
     }
   });
 
-// Evening summary (6:00 PM European time)
+// Evening summary (6:00 PM Paris time)
 export const eveningSummary = functions.pubsub
   .schedule('0 18 * * *')
-  .timeZone('Europe/Madrid')
+  .timeZone('Europe/Paris')
   .onRun(async (context) => {
     console.log('Running evening summary...');
     
@@ -274,8 +274,8 @@ export const updateFCMToken = functions.https.onCall(async (data, context) => {
 
 // Function to send overdue task notifications
 export const checkOverdueTasks = functions.pubsub
-  .schedule('0 9,15 * * *') // 9 AM and 3 PM daily
-  .timeZone('Europe/Madrid')
+  .schedule('0 9 * * *') // 9 AM daily only
+  .timeZone('Europe/Paris')
   .onRun(async (context) => {
     console.log('Checking for overdue tasks...');
     

@@ -276,7 +276,7 @@ class NotificationService {
   // Schedule daily notifications (client-side)
   private scheduleDailyNotifications(): void {
     const now = new Date();
-    const europeTime = new Date(now.toLocaleString("en-US", {timeZone: "Europe/Madrid"}));
+    const europeTime = new Date(now.toLocaleString("en-US", {timeZone: "Europe/Paris"}));
     
     // Schedule for 8:00 AM, 1:00 PM, and 6:00 PM European time
     const times = [

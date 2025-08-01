@@ -76,7 +76,7 @@ firebase deploy --only firestore:rules,firestore:indexes
 - 🌅 **8:00 AM**: Daily summary of today's tasks
 - ☀️ **1:00 PM**: Reminder of incomplete today's tasks  
 - 🌙 **6:00 PM**: Today's pending + tomorrow's tasks
-- ⚠️ **9:00 AM & 3:00 PM**: Overdue task alerts
+- ⚠️ **9:00 AM**: Overdue task alerts
 
 ### **Notification Types**
 - **Browser Notifications**: Immediate, when app is open
@@ -117,7 +117,7 @@ You can test the functions manually in Firebase Console:
 
 3. **Scheduled notifications not working**
    - Check Firebase Functions logs
-   - Verify timezone settings (Europe/Madrid)
+   - Verify timezone settings (Europe/Paris)
    - Ensure functions are deployed successfully
 
 4. **Permission denied errors**
