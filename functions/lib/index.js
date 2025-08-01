@@ -337,12 +337,37 @@ exports.processEmailTask = functions.https.onRequest(async (req, res) => {
         console.log('Request method:', req.method);
         console.log('Content-Type:', req.headers['content-type']);
         console.log('Body type:', typeof req.body);
-        console.log('Body keys:', Object.keys(req.body || {}));
-        // Log the full body in a more readable way
-        if (req.body) {
-            console.log('Full webhook body:');
-            Object.keys(req.body).forEach(key => {
-                const value = req.body[key];
+        // Handle different content types and body formats
+        let parsedBody = req.body;
+        // If body is a string, try to parse it as JSON
+        if (typeof req.body === 'string') {
+            try {
+                parsedBody = JSON.parse(req.body);
+                console.log('Parsed string body as JSON');
+            }
+            catch (e) {
+                console.log('Failed to parse body as JSON, treating as string');
+                parsedBody = req.body;
+            }
+        }
+        // If body is an array (common with some webhook formats), try to extract data
+        if (Array.isArray(parsedBody)) {
+            console.log('Body is an array with length:', parsedBody.length);
+            // Try to find email data in the array
+            const emailData = parsedBody.find(item => item && typeof item === 'object' &&
+                (item.from || item.to || item.subject || item.sender || item.recipient));
+            if (emailData) {
+                parsedBody = emailData;
+                console.log('Found email data in array');
+            }
+        }
+        console.log('Parsed body keys:', Object.keys(parsedBody || {}));
+        // Log the full body in a more readable way (limit to first 10 keys to avoid spam)
+        if (parsedBody && typeof parsedBody === 'object') {
+            console.log('Full webhook body (first 10 keys):');
+            const keys = Object.keys(parsedBody);
+            keys.slice(0, 10).forEach(key => {
+                const value = parsedBody[key];
                 if (typeof value === 'object') {
                     console.log(`  ${key}:`, JSON.stringify(value, null, 2));
                 }
@@ -350,20 +375,23 @@ exports.processEmailTask = functions.https.onRequest(async (req, res) => {
                     console.log(`  ${key}:`, value);
                 }
             });
+            if (keys.length > 10) {
+                console.log(`  ... and ${keys.length - 10} more keys`);
+            }
         }
         // Handle Mailgun webhook format
         let from, to, subject, text, html;
         console.log('=== EXTRACTING EMAIL DATA ===');
-        console.log('Has event-data:', !!req.body['event-data']);
-        console.log('Has recipient:', !!req.body.recipient);
-        console.log('Has sender:', !!req.body.sender);
-        console.log('Has from:', !!req.body.from);
-        console.log('Has to:', !!req.body.to);
-        console.log('Has subject:', !!req.body.subject);
-        if (req.body['event-data'] && req.body['event-data'].message) {
+        console.log('Has event-data:', !!parsedBody['event-data']);
+        console.log('Has recipient:', !!parsedBody.recipient);
+        console.log('Has sender:', !!parsedBody.sender);
+        console.log('Has from:', !!parsedBody.from);
+        console.log('Has to:', !!parsedBody.to);
+        console.log('Has subject:', !!parsedBody.subject);
+        if (parsedBody['event-data'] && parsedBody['event-data'].message) {
             // Mailgun webhook format (event-data)
             console.log('Using event-data format');
-            const message = req.body['event-data'].message;
+            const message = parsedBody['event-data'].message;
             console.log('Message keys:', Object.keys(message || {}));
             from = ((_a = message.headers) === null || _a === void 0 ? void 0 : _a.from) || message.from;
             to = ((_b = message.headers) === null || _b === void 0 ? void 0 : _b.to) || message.to;
@@ -372,32 +400,32 @@ exports.processEmailTask = functions.https.onRequest(async (req, res) => {
             html = message['body-html'] || message['stripped-html'];
             console.log('Extracted from event-data:', { from, to, subject, textLength: text === null || text === void 0 ? void 0 : text.length, htmlLength: html === null || html === void 0 ? void 0 : html.length });
         }
-        else if (req.body.recipient) {
+        else if (parsedBody.recipient) {
             // Mailgun webhook format (direct)
             console.log('Using recipient format');
-            from = req.body.sender || req.body.from;
-            to = req.body.recipient || req.body.to;
-            subject = req.body.subject;
-            text = req.body['body-plain'] || req.body['stripped-text'] || req.body['body'] || req.body.text;
-            html = req.body['body-html'] || req.body['stripped-html'] || req.body.html;
+            from = parsedBody.sender || parsedBody.from;
+            to = parsedBody.recipient || parsedBody.to;
+            subject = parsedBody.subject;
+            text = parsedBody['body-plain'] || parsedBody['stripped-text'] || parsedBody['body'] || parsedBody.text;
+            html = parsedBody['body-html'] || parsedBody['stripped-html'] || parsedBody.html;
             console.log('Extracted from recipient format:', { from, to, subject, textLength: text === null || text === void 0 ? void 0 : text.length, htmlLength: html === null || html === void 0 ? void 0 : html.length });
         }
-        else if (req.body.from || req.body.to || req.body.subject) {
+        else if (parsedBody.from || parsedBody.to || parsedBody.subject) {
             // Simple format (for testing)
             console.log('Using simple format');
-            from = req.body.from;
-            to = req.body.to;
-            subject = req.body.subject;
-            text = req.body.text || req.body['body-plain'] || req.body['stripped-text'];
-            html = req.body.html || req.body['body-html'] || req.body['stripped-html'];
+            from = parsedBody.from;
+            to = parsedBody.to;
+            subject = parsedBody.subject;
+            text = parsedBody.text || parsedBody['body-plain'] || parsedBody['stripped-text'];
+            html = parsedBody.html || parsedBody['body-html'] || parsedBody['stripped-html'];
             console.log('Extracted from simple format:', { from, to, subject, textLength: text === null || text === void 0 ? void 0 : text.length, htmlLength: html === null || html === void 0 ? void 0 : html.length });
         }
         else {
             // Try to extract from any available fields
             console.log('Trying to extract from any available fields...');
-            console.log('All available fields:', Object.keys(req.body));
+            console.log('All available fields:', Object.keys(parsedBody));
             // Look for common email fields in the entire body
-            const bodyStr = JSON.stringify(req.body);
+            const bodyStr = JSON.stringify(parsedBody);
             const fromMatch = bodyStr.match(/"from":\s*"([^"]+)"/);
             const toMatch = bodyStr.match(/"to":\s*"([^"]+)"/);
             const subjectMatch = bodyStr.match(/"subject":\s*"([^"]+)"/);
@@ -405,8 +433,44 @@ exports.processEmailTask = functions.https.onRequest(async (req, res) => {
             to = toMatch ? toMatch[1] : undefined;
             subject = subjectMatch ? subjectMatch[1] : undefined;
             // Try to find body content
-            text = req.body['body-plain'] || req.body['stripped-text'] || req.body['body'] || req.body.text || '';
-            html = req.body['body-html'] || req.body['stripped-html'] || req.body.html || '';
+            text = parsedBody['body-plain'] || parsedBody['stripped-text'] || parsedBody['body'] || parsedBody.text || '';
+            html = parsedBody['body-html'] || parsedBody['stripped-html'] || parsedBody.html || '';
+            // If we still don't have data and the body is a large array, try to find email data in the array
+            if (!from && !to && !subject && Array.isArray(parsedBody) && parsedBody.length > 1000) {
+                console.log('Large array detected, searching for email data...');
+                // Look for email-like patterns in the array
+                const emailPattern = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
+                const subjectPattern = /"subject":\s*"([^"]+)"/;
+                const fromPattern = /"from":\s*"([^"]+)"/;
+                const toPattern = /"to":\s*"([^"]+)"/;
+                // Convert array to string and search for patterns
+                const arrayStr = JSON.stringify(parsedBody);
+                const emailMatch = arrayStr.match(emailPattern);
+                const subjectMatch = arrayStr.match(subjectPattern);
+                const fromMatch = arrayStr.match(fromPattern);
+                const toMatch = arrayStr.match(toPattern);
+                if (emailMatch) {
+                    console.log('Found email address in array:', emailMatch[0]);
+                }
+                if (subjectMatch) {
+                    subject = subjectMatch[1];
+                    console.log('Found subject in array:', subject);
+                }
+                if (fromMatch) {
+                    from = fromMatch[1];
+                    console.log('Found from in array:', from);
+                }
+                if (toMatch) {
+                    to = toMatch[1];
+                    console.log('Found to in array:', to);
+                }
+                // Try to extract body content from the array
+                const bodyMatch = arrayStr.match(/"body-plain":\s*"([^"]+)"/);
+                if (bodyMatch) {
+                    text = bodyMatch[1];
+                    console.log('Found body content in array, length:', text.length);
+                }
+            }
             console.log('Extracted from fallback:', { from, to, subject, textLength: text === null || text === void 0 ? void 0 : text.length, htmlLength: html === null || html === void 0 ? void 0 : html.length });
         }
         console.log('Extracted email data:', {
