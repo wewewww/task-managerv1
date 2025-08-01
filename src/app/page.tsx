@@ -1310,6 +1310,15 @@ export default function HomePage() {
       return true;
     })
     .sort((a, b) => {
+      // First, prioritize open tasks over completed tasks
+      if (a.status === 'complete' && b.status === 'open') {
+        return 1; // Completed tasks go to the bottom
+      }
+      if (a.status === 'open' && b.status === 'complete') {
+        return -1; // Open tasks stay at the top
+      }
+      
+      // If both tasks have the same status, apply the normal sorting logic
       let aValue: number | Date, bValue: number | Date;
       
       switch (sortBy) {
