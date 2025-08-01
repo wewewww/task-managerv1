@@ -230,14 +230,24 @@ function extractUserIdFromEmail(emailAddress) {
 }
 // Helper function to parse email content
 function parseEmailToTask(email) {
+    var _a, _b;
+    // Clean up subject line (remove Fwd:, Re:, etc.)
+    const cleanSubject = ((_b = (_a = email.subject) === null || _a === void 0 ? void 0 : _a.replace(/^(Fwd|Re|Fw|Forward|Reply):\s*/i, '')) === null || _b === void 0 ? void 0 : _b.trim()) || 'Email Task';
     // Extract due date from subject (e.g., "Meeting tomorrow", "Due: 2024-01-15")
-    const dueDate = extractDueDateFromSubject(email.subject);
+    const dueDate = extractDueDateFromSubject(cleanSubject);
     // Extract priority from subject (e.g., "URGENT:", "HIGH:", "LOW:")
-    const importance = extractImportanceFromSubject(email.subject);
+    const importance = extractImportanceFromSubject(cleanSubject);
     // Clean up email body
     const description = cleanEmailBody(email.text || email.html || '');
+    console.log('Parsed email task:', {
+        originalSubject: email.subject,
+        cleanSubject,
+        descriptionLength: description.length,
+        importance,
+        dueDate
+    });
     return {
-        title: email.subject || 'Email Task',
+        title: cleanSubject,
         description,
         area: 'inbox',
         importance: importance || 5,
@@ -284,10 +294,27 @@ function extractImportanceFromSubject(subject) {
 function cleanEmailBody(body) {
     // Remove HTML tags if present
     const textOnly = body.replace(/<[^>]*>/g, '');
+    // Remove email headers (common in forwarded emails)
+    const withoutHeaders = textOnly.replace(/^.*?(?=From:|To:|Subject:|Date:|Sent:|Cc:|Bcc:)/gim, '');
+    // Remove quoted text (lines starting with >)
+    const withoutQuotes = withoutHeaders.replace(/^>.*$/gm, '');
     // Remove email signatures (common patterns)
-    const withoutSignature = textOnly.replace(/--\s*\n.*$/m, '');
-    // Remove excessive whitespace
-    const cleaned = withoutSignature.replace(/\n\s*\n/g, '\n\n').trim();
+    const withoutSignature = withoutQuotes.replace(/--\s*\n.*$/m, '');
+    // Remove forwarded email markers
+    const withoutForwardMarkers = withoutSignature.replace(/^.*?(?=Original Message|From:|Sent:)/gim, '');
+    // Remove excessive whitespace and empty lines
+    const cleaned = withoutForwardMarkers
+        .replace(/\n\s*\n/g, '\n\n')
+        .replace(/^\s+|\s+$/gm, '') // Trim each line
+        .trim();
+    // If we end up with very little content, try to get the first meaningful paragraph
+    if (cleaned.length < 50) {
+        const paragraphs = textOnly.split(/\n\s*\n/);
+        const firstParagraph = paragraphs.find(p => p.trim().length > 20);
+        if (firstParagraph) {
+            return firstParagraph.trim() || 'No description provided';
+        }
+    }
     return cleaned || 'No description provided';
 }
 // Function to process incoming emails and create tasks
@@ -322,6 +349,12 @@ exports.processEmailTask = functions.https.onRequest(async (req, res) => {
             subject = (_c = message.headers) === null || _c === void 0 ? void 0 : _c.subject;
             text = message['body-plain'];
             html = message['body-html'];
+            // For forwarded emails, try to get content from different fields
+            if (!text && !html) {
+                console.log('No body content found, checking alternative fields...');
+                text = message['stripped-text'] || message['stripped-html'] || message['body'] || '';
+                html = message['stripped-html'] || message['body-html'] || '';
+            }
         }
         else if (req.body.recipient) {
             // Mailgun webhook format (direct)
@@ -331,6 +364,12 @@ exports.processEmailTask = functions.https.onRequest(async (req, res) => {
             subject = req.body.subject;
             text = req.body['body-plain'];
             html = req.body['body-html'];
+            // For forwarded emails, try alternative fields
+            if (!text && !html) {
+                console.log('No body content found, checking alternative fields...');
+                text = req.body['stripped-text'] || req.body['stripped-html'] || req.body['body'] || '';
+                html = req.body['stripped-html'] || req.body['body-html'] || '';
+            }
         }
         else {
             // Simple format (for testing)
@@ -341,7 +380,15 @@ exports.processEmailTask = functions.https.onRequest(async (req, res) => {
             text = req.body.text;
             html = req.body.html;
         }
-        console.log('Extracted email data:', { from, to, subject, text: text === null || text === void 0 ? void 0 : text.substring(0, 100) });
+        console.log('Extracted email data:', {
+            from,
+            to,
+            subject,
+            textLength: (text === null || text === void 0 ? void 0 : text.length) || 0,
+            htmlLength: (html === null || html === void 0 ? void 0 : html.length) || 0,
+            textPreview: text === null || text === void 0 ? void 0 : text.substring(0, 100),
+            isForwarded: (subject === null || subject === void 0 ? void 0 : subject.toLowerCase().includes('fwd')) || (subject === null || subject === void 0 ? void 0 : subject.toLowerCase().includes('forward'))
+        });
         if (!from || !to || !subject) {
             console.log('Missing required fields:', { from, to, subject });
             res.status(400).send('Missing required email fields');
