@@ -53,6 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUpWithEmail = async (email: string, password: string, recaptchaToken?: string) => {
     try {
+      console.log('🔐 Starting email signup for:', email);
       setError(null);
       
       // If reCAPTCHA token provided, we could verify it here or let Firebase handle it
@@ -61,10 +62,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.log('reCAPTCHA token received for signup:', recaptchaToken.substring(0, 20) + '...');
       }
       
-      await createUserWithEmailAndPassword(auth, email, password);
+      const result = await createUserWithEmailAndPassword(auth, email, password);
+      console.log('✅ Email signup successful:', result.user.uid);
     } catch (err: unknown) {
+      console.error('❌ Email signup failed:', err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to create account';
       setError(errorMessage);
+      throw err; // Re-throw so the calling component knows it failed
     }
   };
 

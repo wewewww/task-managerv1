@@ -958,6 +958,7 @@ function AuthModal({ mode = 'signup', onClose }: { mode?: 'signin' | 'signup'; o
   const [recaptchaLoading, setRecaptchaLoading] = useState(false);
   const [passwordFocused, setPasswordFocused] = useState(false);
   const [showPasswordRequirements, setShowPasswordRequirements] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
 
   // Password validation functions
   const validatePassword = (pwd: string) => {
@@ -1001,8 +1002,10 @@ function AuthModal({ mode = 'signup', onClose }: { mode?: 'signin' | 'signup'; o
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('🚀 Form submitted - isSignUp:', isSignUp, 'email:', email, 'password length:', password.length);
     setLoading(true);
     clearError();
+    setLocalError(null);
 
     try {
       if (isResetPassword) {
@@ -1011,15 +1014,21 @@ function AuthModal({ mode = 'signup', onClose }: { mode?: 'signin' | 'signup'; o
         setIsResetPassword(false);
       } else if (isSignUp) {
         // Enhanced password validation with detailed feedback
+        console.log('🔍 Validating password...');
         if (!isPasswordValid(password)) {
           const errors = getPasswordErrors(password);
-          throw new Error(`Password requirements not met:\n• ${errors.join('\n• ')}`);
+          console.log('❌ Password validation failed:', errors);
+          setLocalError(`Password requirements not met:\n• ${errors.join('\n• ')}`);
+          return;
         }
         
         if (password !== confirmPassword) {
-          throw new Error('Passwords do not match. Please check both password fields.');
+          console.log('❌ Passwords do not match');
+          setLocalError('Passwords do not match. Please check both password fields.');
+          return;
         }
         
+        console.log('✅ Password validation passed, executing reCAPTCHA...');
         // Execute reCAPTCHA for signup
         await executeRecaptcha('SIGNUP');
       } else {
@@ -1027,8 +1036,20 @@ function AuthModal({ mode = 'signup', onClose }: { mode?: 'signin' | 'signup'; o
         await executeRecaptcha('LOGIN');
       }
     } catch (err: unknown) {
-      // Error is handled by the auth hook
       console.error('Authentication error:', err);
+      // Handle reCAPTCHA and other errors
+      if (err instanceof Error) {
+        if (err.message.includes('Security verification') ||
+            err.message.includes('Network error') ||
+            err.message.includes('not loaded')) {
+          // These are reCAPTCHA-related errors
+          setLocalError(err.message);
+        } else {
+          // Other errors should be handled by the auth hook
+          // But provide a fallback if no error is set
+          setLocalError('Authentication failed. Please try again.');
+        }
+      }
     } finally {
       setLoading(false);
     }
@@ -1036,7 +1057,10 @@ function AuthModal({ mode = 'signup', onClose }: { mode?: 'signin' | 'signup'; o
 
   const executeRecaptcha = async (action: string) => {
     return new Promise<void>((resolve, reject) => {
+      console.log('🛡️ Executing reCAPTCHA for action:', action);
+      
       if (typeof window === 'undefined' || !window.grecaptcha) {
+        console.log('❌ reCAPTCHA not loaded');
         reject(new Error('Security verification not loaded. Please refresh the page and try again.'));
         return;
       }
@@ -1117,9 +1141,9 @@ function AuthModal({ mode = 'signup', onClose }: { mode?: 'signin' | 'signup'; o
           </button>
         </div>
 
-        {error && (
+        {(error || localError) && (
           <div className="bg-red-900/20 border border-red-500/30 rounded-lg p-3 mb-4">
-            <p className="text-red-300 text-sm">{error}</p>
+            <p className="text-red-300 text-sm whitespace-pre-line">{localError || error}</p>
           </div>
         )}
 
