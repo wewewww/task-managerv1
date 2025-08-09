@@ -7,6 +7,70 @@ admin.initializeApp();
 const db = admin.firestore();
 const messaging = admin.messaging();
 
+// reCAPTCHA Enterprise verification function
+async function verifyRecaptchaToken(token: string, expectedAction: string): Promise<boolean> {
+  try {
+    // You need to set this as an environment variable or Firebase config
+    const apiKey = functions.config().recaptcha?.api_key || 'YOUR_API_KEY_HERE';
+    const projectId = 'todo-tracker-2ec93';
+    const siteKey = '6LczPKArAAAAAH2S3T1Jq0bbSVuaEmNnLsFeqeDf';
+    
+    const requestBody = {
+      event: {
+        token: token,
+        expectedAction: expectedAction,
+        siteKey: siteKey
+      }
+    };
+    
+    const response = await fetch(
+      `https://recaptchaenterprise.googleapis.com/v1/projects/${projectId}/assessments?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody)
+      }
+    );
+    
+    if (!response.ok) {
+      console.error('reCAPTCHA API request failed:', response.status, response.statusText);
+      return false;
+    }
+    
+    const data = await response.json();
+    
+    console.log('reCAPTCHA Enterprise verification result:', {
+      tokenProperties: data.tokenProperties,
+      riskAnalysis: data.riskAnalysis,
+      expectedAction
+    });
+    
+    // Check if token is valid and action matches
+    if (data.tokenProperties?.valid && data.tokenProperties?.action === expectedAction) {
+      // Check the risk score (0.0 to 1.0, higher is better)
+      const score = data.riskAnalysis?.score || 0;
+      console.log(`reCAPTCHA score: ${score}`);
+      
+      // You can adjust this threshold based on your needs
+      return score >= 0.5;
+    }
+    
+    console.log('reCAPTCHA verification failed:', {
+      valid: data.tokenProperties?.valid,
+      action: data.tokenProperties?.action,
+      expectedAction,
+      reasons: data.tokenProperties?.invalidReason
+    });
+    
+    return false;
+  } catch (error) {
+    console.error('Error verifying reCAPTCHA token:', error);
+    return false;
+  }
+}
+
 interface Task {
   id: string;
   title: string;
@@ -1024,5 +1088,27 @@ export const processEmailTask = functions.https.onRequest(async (req, res) => {
         timestamp: new Date().toISOString()
       }
     });
+  }
+});
+
+// Function to verify reCAPTCHA tokens
+export const verifyRecaptcha = functions.https.onCall(async (data, context) => {
+  const { token, action } = data;
+  
+  if (!token || !action) {
+    throw new functions.https.HttpsError('invalid-argument', 'Token and action are required');
+  }
+  
+  try {
+    const isValid = await verifyRecaptchaToken(token, action);
+    
+    if (!isValid) {
+      throw new functions.https.HttpsError('permission-denied', 'reCAPTCHA verification failed');
+    }
+    
+    return { success: true, message: 'reCAPTCHA verified successfully' };
+  } catch (error) {
+    console.error('Error in reCAPTCHA verification function:', error);
+    throw new functions.https.HttpsError('internal', 'Failed to verify reCAPTCHA');
   }
 }); 

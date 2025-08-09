@@ -5,9 +5,22 @@ import { useTasks } from '../hooks/useTasks';
 import { Task, TaskArea, Category } from '../types/task';
 import { useAuth } from '../hooks/useAuth';
 import { notificationService } from '../lib/notificationService';
-import { db } from '../lib/firebase';
+import { db, functions } from '../lib/firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
 import { User } from 'firebase/auth';
+
+// TypeScript declarations for reCAPTCHA
+declare global {
+  interface Window {
+    grecaptcha: {
+      enterprise: {
+        ready: (callback: () => void) => void;
+        execute: (siteKey: string, options: { action: string }) => Promise<string>;
+      };
+    };
+  }
+}
 
 const AREA_OPTIONS: { label: string; value: TaskArea; color: string }[] = [
   { label: 'Personal', value: 'personal', color: '#10b981' },
@@ -942,6 +955,7 @@ function AuthModal({ mode = 'signup', onClose }: { mode?: 'signin' | 'signup'; o
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [recaptchaLoading, setRecaptchaLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -960,9 +974,12 @@ function AuthModal({ mode = 'signup', onClose }: { mode?: 'signin' | 'signup'; o
         if (password.length < 6) {
           throw new Error('Password must be at least 6 characters');
         }
-        await signUpWithEmail(email, password);
+        
+        // Execute reCAPTCHA for signup
+        await executeRecaptcha('SIGNUP');
       } else {
-        await signInWithEmail(email, password);
+        // Execute reCAPTCHA for signin
+        await executeRecaptcha('LOGIN');
       }
     } catch (err: unknown) {
       // Error is handled by the auth hook
@@ -970,6 +987,54 @@ function AuthModal({ mode = 'signup', onClose }: { mode?: 'signin' | 'signup'; o
     } finally {
       setLoading(false);
     }
+  };
+
+  const executeRecaptcha = async (action: string) => {
+    return new Promise<void>((resolve, reject) => {
+      if (typeof window === 'undefined' || !window.grecaptcha) {
+        reject(new Error('Security verification not loaded. Please refresh the page and try again.'));
+        return;
+      }
+
+      setRecaptchaLoading(true);
+
+      window.grecaptcha.enterprise.ready(async () => {
+        try {
+          // Execute reCAPTCHA
+          const token = await window.grecaptcha.enterprise.execute('6LczPKArAAAAAH2S3T1Jq0bbSVuaEmNnLsFeqeDf', { action });
+          
+          // Verify the token with our backend
+          const verifyRecaptcha = httpsCallable(functions, 'verifyRecaptcha');
+          await verifyRecaptcha({ token, action });
+          
+          // If verification succeeds, proceed with authentication
+          if (isSignUp) {
+            await signUpWithEmail(email, password, token);
+          } else {
+            await signInWithEmail(email, password, token);
+          }
+          
+          setRecaptchaLoading(false);
+          resolve();
+        } catch (error) {
+          setRecaptchaLoading(false);
+          console.error('reCAPTCHA verification failed:', error);
+          
+          // Provide user-friendly error messages
+          if (error instanceof Error) {
+            if (error.message.includes('permission-denied')) {
+              reject(new Error('Security verification failed. Please try again.'));
+            } else if (error.message.includes('network')) {
+              reject(new Error('Network error. Please check your connection and try again.'));
+            } else {
+              reject(new Error('Security verification failed. Please refresh the page and try again.'));
+            }
+          } else {
+            reject(new Error('Security verification failed. Please try again.'));
+          }
+        }
+      });
+    });
   };
 
   const handleGoogleSignIn = async () => {
@@ -1065,26 +1130,38 @@ function AuthModal({ mode = 'signup', onClose }: { mode?: 'signin' | 'signup'; o
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || recaptchaLoading}
             className={`w-full font-semibold py-3 px-4 rounded-lg transition-all duration-200 ${
               isSignUp 
                 ? 'bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 shadow-lg hover:shadow-xl' 
                 : 'bg-slate-600 hover:bg-slate-700 disabled:bg-slate-800'
             } text-white`}
           >
-            {loading ? (
+            {loading || recaptchaLoading ? (
               <div className="flex items-center justify-center">
                 <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
-                {isSignUp ? 'Creating Account...' : 'Signing In...'}
+                {recaptchaLoading 
+                  ? '🛡️ Verifying Security...' 
+                  : (isSignUp ? 'Creating Account...' : 'Signing In...')
+                }
               </div>
             ) : (
               isResetPassword ? '📧 Send Reset Email' : (isSignUp ? '🚀 Create My Account' : '👋 Sign Me In')
             )}
           </button>
         </form>
+
+        {/* reCAPTCHA notice */}
+        {!isResetPassword && (
+          <div className="text-center mt-4 mb-2">
+            <p className="text-xs text-slate-500">
+              🛡️ Protected by reCAPTCHA Enterprise
+            </p>
+          </div>
+        )}
 
         {!isResetPassword && (
           <>

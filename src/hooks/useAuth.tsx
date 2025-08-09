@@ -17,8 +17,8 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   signInWithGoogle: () => Promise<void>;
-  signUpWithEmail: (email: string, password: string) => Promise<void>;
-  signInWithEmail: (email: string, password: string) => Promise<void>;
+  signUpWithEmail: (email: string, password: string, recaptchaToken?: string) => Promise<void>;
+  signInWithEmail: (email: string, password: string, recaptchaToken?: string) => Promise<void>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   error: string | null;
@@ -51,9 +51,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const signUpWithEmail = async (email: string, password: string) => {
+  const signUpWithEmail = async (email: string, password: string, recaptchaToken?: string) => {
     try {
       setError(null);
+      
+      // If reCAPTCHA token provided, we could verify it here or let Firebase handle it
+      // For now, we'll proceed with the signup and let the backend verify the token
+      if (recaptchaToken) {
+        console.log('reCAPTCHA token received for signup:', recaptchaToken.substring(0, 20) + '...');
+      }
+      
       await createUserWithEmailAndPassword(auth, email, password);
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to create account';
@@ -61,9 +68,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const signInWithEmail = async (email: string, password: string) => {
+  const signInWithEmail = async (email: string, password: string, recaptchaToken?: string) => {
     try {
       setError(null);
+      
+      // If reCAPTCHA token provided, we could verify it here or let Firebase handle it
+      if (recaptchaToken) {
+        console.log('reCAPTCHA token received for signin:', recaptchaToken.substring(0, 20) + '...');
+      }
+      
       await signInWithEmailAndPassword(auth, email, password);
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to sign in';

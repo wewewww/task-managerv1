@@ -1,12 +1,43 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.processEmailTask = exports.checkOverdueTasks = exports.updateFCMToken = exports.eveningSummary = exports.afternoonReminder = exports.morningNotification = void 0;
+exports.verifyRecaptcha = exports.processEmailTask = exports.checkOverdueTasks = exports.updateFCMToken = exports.eveningSummary = exports.afternoonReminder = exports.morningNotification = void 0;
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 // Initialize Firebase Admin
 admin.initializeApp();
 const db = admin.firestore();
 const messaging = admin.messaging();
+// reCAPTCHA verification function
+async function verifyRecaptchaToken(token, expectedAction) {
+    try {
+        const secretKey = '6LczPKArAAAAAH2S3T1Jq0bbSVuaEmNnLsFeqeDf'; // This should be your secret key
+        const response = await fetch('https://www.google.com/recaptcha/api/siteverify', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: `secret=${secretKey}&response=${token}`
+        });
+        const data = await response.json();
+        console.log('reCAPTCHA verification result:', {
+            success: data.success,
+            action: data.action,
+            score: data.score,
+            expectedAction
+        });
+        // Check if verification was successful and action matches
+        if (data.success && data.action === expectedAction) {
+            // For reCAPTCHA v3, also check the score (0.0 to 1.0, higher is better)
+            // You can adjust this threshold based on your needs
+            return data.score >= 0.5;
+        }
+        return false;
+    }
+    catch (error) {
+        console.error('Error verifying reCAPTCHA token:', error);
+        return false;
+    }
+}
 // Helper function to get tasks for a specific date
 async function getTasksForDate(userId, date) {
     const startOfDay = new Date(date);
@@ -842,6 +873,24 @@ exports.processEmailTask = functions.https.onRequest(async (req, res) => {
                 timestamp: new Date().toISOString()
             }
         });
+    }
+});
+// Function to verify reCAPTCHA tokens
+exports.verifyRecaptcha = functions.https.onCall(async (data, context) => {
+    const { token, action } = data;
+    if (!token || !action) {
+        throw new functions.https.HttpsError('invalid-argument', 'Token and action are required');
+    }
+    try {
+        const isValid = await verifyRecaptchaToken(token, action);
+        if (!isValid) {
+            throw new functions.https.HttpsError('permission-denied', 'reCAPTCHA verification failed');
+        }
+        return { success: true, message: 'reCAPTCHA verified successfully' };
+    }
+    catch (error) {
+        console.error('Error in reCAPTCHA verification function:', error);
+        throw new functions.https.HttpsError('internal', 'Failed to verify reCAPTCHA');
     }
 });
 //# sourceMappingURL=index.js.map
