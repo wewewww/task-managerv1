@@ -245,7 +245,7 @@ function EditTaskModal({
     }
   };
 
-
+    
 
   return (
     <div 
@@ -934,9 +934,9 @@ function EmailInfoModal({
   );
 }
 
-function AuthModal({ onClose }: { onClose: () => void }) {
+function AuthModal({ mode = 'signup', onClose }: { mode?: 'signin' | 'signup'; onClose: () => void }) {
   const { signInWithGoogle, signUpWithEmail, signInWithEmail, resetPassword, error, clearError } = useAuth();
-  const [isSignUp, setIsSignUp] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(mode === 'signup');
   const [isResetPassword, setIsResetPassword] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -985,11 +985,22 @@ function AuthModal({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
       <div className="bg-slate-800 rounded-xl p-6 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold text-white">
-            {isResetPassword ? 'Reset Password' : (isSignUp ? 'Create Account' : 'Sign In')}
-          </h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-white">
+        <div className="flex justify-between items-start mb-6">
+          <div>
+            <h2 className="text-2xl font-bold text-white mb-1">
+              {isResetPassword ? 'Reset Password' : (isSignUp ? 'Create Your Account' : 'Welcome Back')}
+            </h2>
+            <p className="text-sm text-slate-400">
+              {isResetPassword 
+                ? 'Enter your email to receive a password reset link' 
+                : (isSignUp 
+                  ? 'Join thousands of users organizing their tasks efficiently' 
+                  : 'Sign in to access your task dashboard'
+                )
+              }
+            </p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-white ml-4">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -1055,9 +1066,23 @@ function AuthModal({ onClose }: { onClose: () => void }) {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 text-white font-semibold py-2 px-4 rounded-lg transition"
+            className={`w-full font-semibold py-3 px-4 rounded-lg transition-all duration-200 ${
+              isSignUp 
+                ? 'bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 shadow-lg hover:shadow-xl' 
+                : 'bg-slate-600 hover:bg-slate-700 disabled:bg-slate-800'
+            } text-white`}
           >
-            {loading ? 'Loading...' : (isResetPassword ? 'Send Reset Email' : (isSignUp ? 'Create Account' : 'Sign In'))}
+            {loading ? (
+              <div className="flex items-center justify-center">
+                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                {isSignUp ? 'Creating Account...' : 'Signing In...'}
+              </div>
+            ) : (
+              isResetPassword ? '📧 Send Reset Email' : (isSignUp ? '🚀 Create My Account' : '👋 Sign Me In')
+            )}
           </button>
         </form>
 
@@ -1103,32 +1128,41 @@ function AuthModal({ onClose }: { onClose: () => void }) {
                 setIsSignUp(false);
                 clearError();
               }}
-              className="text-blue-400 hover:text-blue-300 text-sm"
+              className="text-blue-400 hover:text-blue-300 text-sm font-medium"
             >
-              Back to Sign In
+              ← Back to Sign In
             </button>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-3">
+              <div className="text-slate-500 text-xs">
+                {isSignUp ? 'Already using Task Manager?' : 'New to Task Manager?'}
+              </div>
               <button
                 onClick={() => {
                   setIsSignUp(!isSignUp);
                   setIsResetPassword(false);
                   clearError();
                 }}
-                className="text-blue-400 hover:text-blue-300 text-sm block"
+                className={`text-sm font-medium transition-colors ${
+                  isSignUp 
+                    ? 'text-slate-300 hover:text-white' 
+                    : 'text-blue-400 hover:text-blue-300'
+                }`}
               >
-                {isSignUp ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}
+                {isSignUp ? 'Sign In to Your Account' : '🚀 Create Free Account'}
               </button>
               {!isSignUp && (
-                <button
-                  onClick={() => {
-                    setIsResetPassword(true);
-                    clearError();
-                  }}
-                  className="text-blue-400 hover:text-blue-300 text-sm block"
-                >
-                  Forgot your password?
-                </button>
+                <div className="pt-2">
+                  <button
+                    onClick={() => {
+                      setIsResetPassword(true);
+                      clearError();
+                    }}
+                    className="text-slate-400 hover:text-slate-300 text-xs"
+                  >
+                    Forgot your password?
+                  </button>
+                </div>
               )}
             </div>
           )}
@@ -1160,6 +1194,7 @@ export default function HomePage() {
   const [hoursPerDay, setHoursPerDay] = useState(DEFAULT_HOURS_PER_DAY);
   const [hasLoadedHoursPerDay, setHasLoadedHoursPerDay] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authModalMode, setAuthModalMode] = useState<'signin' | 'signup'>('signup');
 
   // Setup notifications when user is authenticated
   useEffect(() => {
@@ -1359,21 +1394,69 @@ export default function HomePage() {
     );
   }
 
-  // If not logged in, show authentication modal
+  // If not logged in, show improved landing page with clear auth options
   if (!user) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-        <div className="bg-slate-800/70 border border-slate-700 rounded-xl p-8 flex flex-col items-center shadow-xl">
-          <h1 className="text-2xl font-bold text-white mb-4">Welcome to Task Manager</h1>
-          <p className="text-slate-300 text-center mb-6">Organize your life across all areas with our powerful task management system</p>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4">
+        <div className="bg-slate-800/70 border border-slate-700 rounded-xl p-8 flex flex-col items-center shadow-xl max-w-md w-full">
+          {/* Logo/Icon */}
+          <div className="w-16 h-16 bg-blue-600 rounded-xl flex items-center justify-center mb-6">
+            <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+            </svg>
+          </div>
+          
+          <h1 className="text-3xl font-bold text-white mb-3 text-center">Task Manager</h1>
+          <p className="text-slate-300 text-center mb-8 leading-relaxed">
+            Organize your life across all areas with our powerful task management system featuring Eisenhower Matrix prioritization and smart notifications.
+          </p>
+          
+          {/* Clear Action Buttons */}
+          <div className="w-full space-y-3">
           <button
-            onClick={() => setShowAuthModal(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-8 py-3 rounded-lg shadow-lg transition"
-          >
-            Get Started
+              onClick={() => {
+                setAuthModalMode('signup');
+                setShowAuthModal(true);
+              }}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg shadow-lg transition-all duration-200 hover:shadow-xl"
+            >
+              🚀 Create Free Account
+            </button>
+            
+            <button
+              onClick={() => {
+                setAuthModalMode('signin');
+                setShowAuthModal(true);
+              }}
+              className="w-full bg-slate-700 hover:bg-slate-600 text-white font-medium py-3 px-6 rounded-lg border border-slate-600 transition-all duration-200"
+            >
+              Sign In to Existing Account
           </button>
         </div>
-        {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} />}
+          
+          {/* Features Preview */}
+          <div className="mt-8 pt-6 border-t border-slate-600 w-full">
+            <div className="grid grid-cols-2 gap-4 text-center">
+              <div className="text-slate-300">
+                <div className="text-2xl mb-1">📊</div>
+                <div className="text-xs font-medium">Eisenhower Matrix</div>
+              </div>
+              <div className="text-slate-300">
+                <div className="text-2xl mb-1">📧</div>
+                <div className="text-xs font-medium">Email to Task</div>
+              </div>
+              <div className="text-slate-300">
+                <div className="text-2xl mb-1">🔔</div>
+                <div className="text-xs font-medium">Smart Notifications</div>
+              </div>
+              <div className="text-slate-300">
+                <div className="text-2xl mb-1">📱</div>
+                <div className="text-xs font-medium">Mobile Friendly</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        {showAuthModal && <AuthModal mode={authModalMode} onClose={() => setShowAuthModal(false)} />}
       </div>
     );
   }
