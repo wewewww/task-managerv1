@@ -331,19 +331,88 @@ interface EmailTask {
   };
 }
 
+// Helper function to validate and sanitize email address
+function validateAndSanitizeEmail(email: string): string | null {
+  if (!email || typeof email !== 'string') {
+    return null;
+  }
+  
+  // Remove any whitespace and convert to lowercase
+  const cleaned = email.trim().toLowerCase();
+  
+  // Basic email validation regex
+  const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+  
+  if (!emailRegex.test(cleaned)) {
+    console.log(`Invalid email format: ${cleaned}`);
+    return null;
+  }
+  
+  // Additional security checks
+  if (cleaned.length > 254) { // RFC 5321 limit
+    console.log(`Email too long: ${cleaned.length} characters`);
+    return null;
+  }
+  
+  return cleaned;
+}
+
 // Helper function to extract user ID from email address
 function extractUserIdFromEmail(emailAddress: string): string | null {
-  // Expected format: userId@tasks.yourdomain.com
-  const match = emailAddress.match(/^([^@]+)@/);
+  const sanitizedEmail = validateAndSanitizeEmail(emailAddress);
+  if (!sanitizedEmail) {
+    return null;
+  }
+  
+  // Expected format: userId@tasks.yourdomain.com or userId@sandbox...mailgun.org
+  const match = sanitizedEmail.match(/^([^@]+)@/);
   return match ? match[1] : null;
+}
+
+// Helper function to sanitize and validate subject
+function sanitizeSubject(subject: string): string {
+  if (!subject || typeof subject !== 'string') {
+    return 'Email Task';
+  }
+  
+  // Remove dangerous characters and limit length
+  const cleaned = subject
+    .replace(/[<>]/g, '') // Remove potential HTML/script tags
+    .replace(/[\x00-\x1F\x7F]/g, '') // Remove control characters
+    .trim()
+    .substring(0, 200); // Limit length
+  
+  return cleaned || 'Email Task';
+}
+
+// Helper function to sanitize text content
+function sanitizeTextContent(text: string): string {
+  if (!text || typeof text !== 'string') {
+    return '';
+  }
+  
+  // Remove dangerous characters, decode HTML entities, and limit length
+  const cleaned = text
+    .replace(/[<>]/g, '') // Remove potential HTML/script tags
+    .replace(/[\x00-\x1F\x7F]/g, '') // Remove control characters
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#39;/g, "'")
+    .trim()
+    .substring(0, 5000); // Limit length to prevent abuse
+  
+  return cleaned;
 }
 
 // Helper function to parse email content
 function parseEmailToTask(email: EmailMessage): EmailTask {
-  // Clean up subject line (remove Fwd:, Re:, etc.)
-  const cleanSubject = email.subject
-    ?.replace(/^(Fwd|Re|Fw|Forward|Reply):\s*/i, '')
-    ?.trim() || 'Email Task';
+  // Sanitize and clean up subject line (remove Fwd:, Re:, etc.)
+  const rawSubject = sanitizeSubject(email.subject || '');
+  const cleanSubject = rawSubject
+    .replace(/^(Fwd|Re|Fw|Forward|Reply):\s*/i, '')
+    .trim() || 'Email Task';
   
   // Extract due date from subject (e.g., "Meeting tomorrow", "Due: 2024-01-15")
   const dueDate = extractDueDateFromSubject(cleanSubject);
@@ -351,27 +420,33 @@ function parseEmailToTask(email: EmailMessage): EmailTask {
   // Extract priority from subject (e.g., "URGENT:", "HIGH:", "LOW:")
   const importance = extractImportanceFromSubject(cleanSubject);
   
-  // Clean up email body
-  const description = cleanEmailBody(email.text || email.html || '');
+  // Clean up and sanitize email body
+  const rawBody = email.text || email.html || '';
+  const cleanedBody = cleanEmailBody(rawBody);
+  const description = sanitizeTextContent(cleanedBody);
+  
+  // Sanitize sender email
+  const sanitizedSender = validateAndSanitizeEmail(email.from) || 'unknown@sender.com';
   
   console.log('Parsed email task:', {
-    originalSubject: email.subject,
-    cleanSubject,
+    originalSubject: email.subject?.substring(0, 50),
+    cleanSubject: cleanSubject.substring(0, 50),
     descriptionLength: description.length,
     importance,
-    dueDate
+    dueDate: dueDate?.toISOString(),
+    senderValid: !!validateAndSanitizeEmail(email.from)
   });
   
   return {
     title: cleanSubject,
-    description,
+    description: description || 'No description provided',
     area: 'inbox',
-    importance: importance || 5,
+    importance: Math.max(1, Math.min(10, importance || 5)), // Ensure importance is between 1-10
     dueDate,
     emailSource: {
-      sender: email.from,
+      sender: sanitizedSender,
       receivedAt: email.receivedAt,
-      originalSubject: email.subject
+      originalSubject: rawSubject
     }
   };
 }
@@ -564,147 +639,390 @@ export const processEmailTask = functions.https.onRequest(async (req, res) => {
     } else {
       // Try to extract from any available fields
       console.log('Trying to extract from any available fields...');
-      console.log('All available fields:', Object.keys(parsedBody));
       
-      // Look for common email fields in the entire body
-      const bodyStr = JSON.stringify(parsedBody);
-      const fromMatch = bodyStr.match(/"from":\s*"([^"]+)"/);
-      const toMatch = bodyStr.match(/"to":\s*"([^"]+)"/);
-      const subjectMatch = bodyStr.match(/"subject":\s*"([^"]+)"/);
-      
-      from = fromMatch ? fromMatch[1] : undefined;
-      to = toMatch ? toMatch[1] : undefined;
-      subject = subjectMatch ? subjectMatch[1] : undefined;
-      
-      // Try to find body content
-      text = parsedBody['body-plain'] || parsedBody['stripped-text'] || parsedBody['body'] || parsedBody.text || '';
-      html = parsedBody['body-html'] || parsedBody['stripped-html'] || parsedBody.html || '';
-      
-      // If we still don't have data and the body is a large array, try to find email data in the array
-      if (!from && !to && !subject && Array.isArray(parsedBody) && parsedBody.length > 1000) {
-        console.log('Large array detected, searching for email data...');
+      // Check if we have a massive array (common with certain Mailgun webhook formats)
+      if (Array.isArray(parsedBody) && parsedBody.length > 1000) {
+        console.log(`Massive array detected with ${parsedBody.length} items. Implementing smart parsing...`);
         
-        // Look for email-like patterns in the array
-        const emailPattern = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
-        const subjectPattern = /"subject":\s*"([^"]+)"/;
-        const fromPattern = /"from":\s*"([^"]+)"/;
-        const toPattern = /"to":\s*"([^"]+)"/;
+        // For massive arrays, we need to be smart about parsing to avoid timeouts
+        // Sample different parts of the array to find email data
+        const sampleSize = Math.min(1000, Math.floor(parsedBody.length / 10));
+        const samples = [];
         
-        // Convert array to string and search for patterns
-        const arrayStr = JSON.stringify(parsedBody);
-        
-        const emailMatch = arrayStr.match(emailPattern);
-        const subjectMatch = arrayStr.match(subjectPattern);
-        const fromMatch = arrayStr.match(fromPattern);
-        const toMatch = arrayStr.match(toPattern);
-        
-        if (emailMatch) {
-          console.log('Found email address in array:', emailMatch[0]);
+        // Take samples from beginning, middle, and end
+        for (let i = 0; i < sampleSize; i += 100) {
+          samples.push(parsedBody[i]);
         }
-        if (subjectMatch) {
-          subject = subjectMatch[1];
-          console.log('Found subject in array:', subject);
+        for (let i = Math.floor(parsedBody.length / 2); i < Math.floor(parsedBody.length / 2) + sampleSize && i < parsedBody.length; i += 100) {
+          samples.push(parsedBody[i]);
         }
-        if (fromMatch) {
-          from = fromMatch[1];
-          console.log('Found from in array:', from);
-        }
-        if (toMatch) {
-          to = toMatch[1];
-          console.log('Found to in array:', to);
+        for (let i = Math.max(0, parsedBody.length - sampleSize); i < parsedBody.length; i += 100) {
+          samples.push(parsedBody[i]);
         }
         
-        // Try to extract body content from the array
-        const bodyMatch = arrayStr.match(/"body-plain":\s*"([^"]+)"/);
-        if (bodyMatch) {
-          text = bodyMatch[1];
-          console.log('Found body content in array, length:', text.length);
+        console.log(`Sampling ${samples.length} items from array`);
+        
+        // Look for email data in samples
+        let emailFound = false;
+        for (const item of samples) {
+          if (item && typeof item === 'string') {
+            // Try to parse as JSON if it's a string
+            try {
+              const parsed = JSON.parse(item);
+              if (parsed && typeof parsed === 'object') {
+                if (parsed.from || parsed.to || parsed.subject || parsed.sender || parsed.recipient) {
+                  console.log('Found email data in parsed JSON sample');
+                  parsedBody = parsed;
+                  emailFound = true;
+                  break;
+                }
+              }
+            } catch (e) {
+              // Not JSON, continue
+            }
+            
+            // Check if the string contains email patterns
+            if (item.includes('@') && (item.includes('subject') || item.includes('from') || item.includes('to'))) {
+              console.log('Found email patterns in string sample');
+              // Try to extract using regex
+              const fromMatch = item.match(/(?:"from"|from):\s*"?([^",\n]+@[^",\n]+)"?/i);
+              const toMatch = item.match(/(?:"to"|to):\s*"?([^",\n]+@[^",\n]+)"?/i);
+              const subjectMatch = item.match(/(?:"subject"|subject):\s*"([^"]+)"/i);
+              
+              if (fromMatch) from = fromMatch[1].trim();
+              if (toMatch) to = toMatch[1].trim();
+              if (subjectMatch) subject = subjectMatch[1].trim();
+              
+              if (from && to && subject) {
+                console.log('Successfully extracted email data from string sample');
+                emailFound = true;
+                break;
+              }
+            }
+          } else if (item && typeof item === 'object') {
+            // Check if this object has email data
+            if (item.from || item.to || item.subject || item.sender || item.recipient) {
+              console.log('Found email data in object sample');
+              parsedBody = item;
+              emailFound = true;
+              break;
+            }
+          }
+        }
+        
+        if (!emailFound) {
+          // Last resort: convert entire array to string and use regex (risky for large arrays)
+          console.log('No email data found in samples, trying full array regex search...');
+          try {
+            // Only do this for arrays smaller than 10k items to avoid memory issues
+            if (parsedBody.length < 10000) {
+              const arrayStr = JSON.stringify(parsedBody);
+              const fromMatch = arrayStr.match(/"from":\s*"([^"]+@[^"]+)"/);
+              const toMatch = arrayStr.match(/"to":\s*"([^"]+@[^"]+)"/);
+              const subjectMatch = arrayStr.match(/"subject":\s*"([^"]+)"/);
+              
+              if (fromMatch) from = fromMatch[1];
+              if (toMatch) to = toMatch[1];
+              if (subjectMatch) subject = subjectMatch[1];
+              
+              console.log('Regex extraction results:', { from: !!from, to: !!to, subject: !!subject });
+            } else {
+              console.log('Array too large for full regex search, skipping...');
+            }
+          } catch (error) {
+            console.error('Error in full array regex search:', error);
+          }
         }
       }
       
-      console.log('Extracted from fallback:', { from, to, subject, textLength: text?.length, htmlLength: html?.length });
+      // If parsedBody was updated from array processing, try standard extraction
+      if (!from && !to && !subject && parsedBody && typeof parsedBody === 'object' && !Array.isArray(parsedBody)) {
+        console.log('Trying standard extraction on processed body...');
+        from = parsedBody.sender || parsedBody.from;
+        to = parsedBody.recipient || parsedBody.to;
+        subject = parsedBody.subject;
+        text = parsedBody['body-plain'] || parsedBody['stripped-text'] || parsedBody['body'] || parsedBody.text;
+        html = parsedBody['body-html'] || parsedBody['stripped-html'] || parsedBody.html;
+      }
+      
+      // Final fallback: look for common email fields in the entire body
+      if (!from && !to && !subject) {
+        console.log('Final fallback: searching for email patterns in body...');
+        const bodyStr = typeof parsedBody === 'string' ? parsedBody : JSON.stringify(parsedBody).substring(0, 50000); // Limit to avoid memory issues
+        
+        // More comprehensive regex patterns
+        const patterns = {
+          from: [
+            /"from":\s*"([^"]+@[^"]+)"/i,
+            /"sender":\s*"([^"]+@[^"]+)"/i,
+            /from:\s*([^,\s\n]+@[^,\s\n]+)/i,
+            /sender:\s*([^,\s\n]+@[^,\s\n]+)/i
+          ],
+          to: [
+            /"to":\s*"([^"]+@[^"]+)"/i,
+            /"recipient":\s*"([^"]+@[^"]+)"/i,
+            /to:\s*([^,\s\n]+@[^,\s\n]+)/i,
+            /recipient:\s*([^,\s\n]+@[^,\s\n]+)/i
+          ],
+          subject: [
+            /"subject":\s*"([^"]+)"/i,
+            /subject:\s*([^\n\r]+)/i
+          ]
+        };
+        
+        // Try each pattern
+        for (const fromPattern of patterns.from) {
+          const match = bodyStr.match(fromPattern);
+          if (match) {
+            from = match[1].trim();
+            break;
+          }
+        }
+        
+        for (const toPattern of patterns.to) {
+          const match = bodyStr.match(toPattern);
+          if (match) {
+            to = match[1].trim();
+            break;
+          }
+        }
+        
+        for (const subjectPattern of patterns.subject) {
+          const match = bodyStr.match(subjectPattern);
+          if (match) {
+            subject = match[1].trim();
+            break;
+          }
+        }
+        
+        // Try to find body content
+        if (!text && !html) {
+          const bodyPatterns = [
+            /"body-plain":\s*"([^"]+)"/,
+            /"stripped-text":\s*"([^"]+)"/,
+            /"body":\s*"([^"]+)"/,
+            /"text":\s*"([^"]+)"/
+          ];
+          
+          for (const bodyPattern of bodyPatterns) {
+            const match = bodyStr.match(bodyPattern);
+            if (match) {
+              text = match[1];
+              break;
+            }
+          }
+        }
+      }
+      
+      console.log('All available fields (first 20):', Object.keys(parsedBody || {}).slice(0, 20));
+      console.log('Extracted from fallback:', { 
+        from: from ? `${from.substring(0, 20)}...` : undefined, 
+        to: to ? `${to.substring(0, 20)}...` : undefined, 
+        subject: subject ? `${subject.substring(0, 30)}...` : undefined, 
+        textLength: text?.length, 
+        htmlLength: html?.length 
+      });
     }
     
-    console.log('Extracted email data:', { 
-      from, 
-      to, 
-      subject, 
-      textLength: text?.length || 0,
-      htmlLength: html?.length || 0,
-      textPreview: text?.substring(0, 100),
-      isForwarded: subject?.toLowerCase().includes('fwd') || subject?.toLowerCase().includes('forward')
+    // Sanitize and validate extracted email data
+    const sanitizedFrom = validateAndSanitizeEmail(from || '');
+    const sanitizedTo = validateAndSanitizeEmail(to || '');
+    const sanitizedSubject = sanitizeSubject(subject || '');
+    const sanitizedText = sanitizeTextContent(text || '');
+    const sanitizedHtml = sanitizeTextContent(html || '');
+    
+    console.log('Extracted and sanitized email data:', { 
+      from: sanitizedFrom ? `${sanitizedFrom.substring(0, 20)}...` : null, 
+      to: sanitizedTo ? `${sanitizedTo.substring(0, 20)}...` : null, 
+      subject: sanitizedSubject ? `${sanitizedSubject.substring(0, 30)}...` : null, 
+      textLength: sanitizedText?.length || 0,
+      htmlLength: sanitizedHtml?.length || 0,
+      textPreview: sanitizedText?.substring(0, 50),
+      isForwarded: sanitizedSubject?.toLowerCase().includes('fwd') || sanitizedSubject?.toLowerCase().includes('forward')
     });
     
-    if (!from || !to || !subject) {
-      console.log('Missing required fields:', { from, to, subject });
-      res.status(400).send('Missing required email fields');
+    if (!sanitizedFrom || !sanitizedTo || !sanitizedSubject) {
+      console.log('Missing or invalid required fields after sanitization:', { 
+        from: sanitizedFrom ? 'valid' : 'invalid', 
+        to: sanitizedTo ? 'valid' : 'invalid', 
+        subject: sanitizedSubject ? 'valid' : 'invalid' 
+      });
+      res.status(400).json({
+        success: false,
+        error: 'Missing or invalid required email fields',
+        details: {
+          from: !sanitizedFrom ? 'missing or invalid' : 'ok',
+          to: !sanitizedTo ? 'missing or invalid' : 'ok',
+          subject: !sanitizedSubject ? 'missing or invalid' : 'ok'
+        }
+      });
       return;
     }
     
-    // Extract user ID from email address
-    const userId = extractUserIdFromEmail(to);
+    // Extract user ID from email address using sanitized data
+    const userId = extractUserIdFromEmail(sanitizedTo);
     console.log('Extracted user ID:', userId);
     
     if (!userId) {
-      console.log('Invalid email format:', to);
-      res.status(400).send('Invalid email address format');
+      console.log('Invalid email format:', sanitizedTo);
+      res.status(400).json({
+        success: false,
+        error: 'Invalid email address format',
+        details: { email: sanitizedTo }
+      });
       return;
     }
     
     // Check if user exists
-    const userDoc = await db.collection('users').doc(userId).get();
-    if (!userDoc.exists) {
-      console.log('User not found:', userId);
-      res.status(404).send('User not found');
+    let userDoc;
+    try {
+      userDoc = await db.collection('users').doc(userId).get();
+      if (!userDoc.exists) {
+        console.log('User not found:', userId);
+        res.status(404).json({
+          success: false,
+          error: 'User not found',
+          details: { userId }
+        });
+        return;
+      }
+    } catch (error) {
+      console.error('Error checking user existence:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Database error while checking user',
+        details: { userId }
+      });
       return;
     }
     
     console.log('User found, creating task...');
     
-    // Parse email to task
-    const emailTask = parseEmailToTask({
-      from,
-      to,
-      subject,
-      text,
-      html,
-      receivedAt: new Date()
+    // Parse email to task using sanitized data
+    let emailTask;
+    try {
+      emailTask = parseEmailToTask({
+        from: sanitizedFrom,
+        to: sanitizedTo,
+        subject: sanitizedSubject,
+        text: sanitizedText,
+        html: sanitizedHtml,
+        receivedAt: new Date()
+      });
+    } catch (error) {
+      console.error('Error parsing email to task:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Error parsing email content',
+        details: { error: error instanceof Error ? error.message : 'Unknown error' }
+      });
+      return;
+    }
+    
+    console.log('Email task parsed:', {
+      title: emailTask.title.substring(0, 50),
+      descriptionLength: emailTask.description.length,
+      area: emailTask.area,
+      importance: emailTask.importance,
+      dueDate: emailTask.dueDate?.toISOString()
     });
     
-    console.log('Email task parsed:', emailTask);
-    
-    // Create task in Firestore
-    const taskData = {
-      ...emailTask,
-      dateNoted: admin.firestore.FieldValue.serverTimestamp(),
-      status: 'open',
-      userId
-    };
-    
-    // Remove undefined values to avoid Firestore errors
-    Object.keys(taskData).forEach(key => {
-      if ((taskData as any)[key] === undefined) {
-        delete (taskData as any)[key];
+    // Create task in Firestore with comprehensive error handling
+    try {
+      const taskData = {
+        ...emailTask,
+        dateNoted: admin.firestore.FieldValue.serverTimestamp(),
+        status: 'open' as const,
+        userId
+      };
+      
+      // Remove undefined values to avoid Firestore errors
+      Object.keys(taskData).forEach(key => {
+        if ((taskData as any)[key] === undefined) {
+          delete (taskData as any)[key];
+        }
+      });
+      
+      // Validate task data before saving
+      if (!taskData.title || taskData.title.trim().length === 0) {
+        throw new Error('Task title is required');
       }
-    });
-    
-    const taskRef = await db
-      .collection('users')
-      .doc(userId)
-      .collection('tasks')
-      .add(taskData);
-    
-    console.log(`Task created from email for user ${userId}:`, taskRef.id);
-    
-    // Send confirmation response
-    res.status(200).json({
-      success: true,
-      taskId: taskRef.id,
-      message: 'Task created successfully from email'
-    });
+      
+      if (typeof taskData.importance !== 'number' || taskData.importance < 1 || taskData.importance > 10) {
+        throw new Error('Task importance must be a number between 1 and 10');
+      }
+      
+      if (!taskData.area || typeof taskData.area !== 'string') {
+        throw new Error('Task area is required');
+      }
+      
+      console.log('Creating task in Firestore...');
+      const taskRef = await db
+        .collection('users')
+        .doc(userId)
+        .collection('tasks')
+        .add(taskData);
+      
+      console.log(`Task created successfully from email for user ${userId}:`, taskRef.id);
+      
+      // Send confirmation response
+      res.status(200).json({
+        success: true,
+        taskId: taskRef.id,
+        message: 'Task created successfully from email',
+        taskData: {
+          title: taskData.title,
+          area: taskData.area,
+          importance: taskData.importance,
+          status: taskData.status
+        }
+      });
+      
+    } catch (error) {
+      console.error('Error creating task in Firestore:', error);
+      
+      // Determine error type and send appropriate response
+      if (error instanceof Error) {
+        if (error.message.includes('permission')) {
+          res.status(403).json({
+            success: false,
+            error: 'Permission denied while creating task',
+            details: { userId, message: error.message }
+          });
+        } else if (error.message.includes('quota') || error.message.includes('limit')) {
+          res.status(429).json({
+            success: false,
+            error: 'Database quota exceeded',
+            details: { userId, message: error.message }
+          });
+        } else {
+          res.status(500).json({
+            success: false,
+            error: 'Failed to create task in database',
+            details: { userId, message: error.message }
+          });
+        }
+      } else {
+        res.status(500).json({
+          success: false,
+          error: 'Unknown error while creating task',
+          details: { userId }
+        });
+      }
+      return;
+    }
     
   } catch (error) {
-    console.error('Error processing email task:', error);
-    res.status(500).send('Internal server error');
+    console.error('Unexpected error processing email task:', error);
+    
+    // Send structured error response
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error while processing email',
+      details: {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date().toISOString()
+      }
+    });
   }
 }); 
