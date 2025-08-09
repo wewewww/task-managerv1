@@ -12,7 +12,7 @@ async function verifyRecaptchaToken(token, expectedAction) {
     var _a, _b, _c, _d, _e, _f, _g;
     try {
         const projectId = 'todo-tracker-2ec93';
-        const siteKey = '6LczPKArAAAAAH2S3T1Jq0bbSVuaEmNnLsFeqeDf';
+        const siteKey = '6LczPKArAAAAAH2S3TlJq0bbSVuaEmNnLsFeqeDf';
         // Try API key authentication first (recommended for this use case)
         const apiKey = (_a = functions.config().recaptcha) === null || _a === void 0 ? void 0 : _a.api_key;
         if (!apiKey) {

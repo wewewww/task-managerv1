@@ -26,11 +26,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        <script 
-          src="https://www.google.com/recaptcha/enterprise.js?render=6LczPKArAAAAAH2S3T1Jq0bbSVuaEmNnLsFeqeDf" 
-          async 
-          defer
-        ></script>
+                      <script 
+                src="https://www.google.com/recaptcha/enterprise.js?render=6LczPKArAAAAAH2S3TlJq0bbSVuaEmNnLsFeqeDf" 
+                async 
+                defer
+              ></script>
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}

@@ -1059,15 +1059,9 @@ function AuthModal({ mode = 'signup', onClose }: { mode?: 'signin' | 'signup'; o
     return new Promise<void>((resolve, reject) => {
       console.log('🛡️ Executing reCAPTCHA for action:', action);
       
-      // TEMPORARY FIX: Skip reCAPTCHA if not properly configured
       if (typeof window === 'undefined' || !window.grecaptcha) {
-        console.log('⚠️ reCAPTCHA not loaded, proceeding without verification (temporary)');
-        // Proceed directly to authentication without reCAPTCHA
-        if (action === 'SIGNUP') {
-          signUpWithEmail(email, password).then(resolve).catch(reject);
-        } else {
-          signInWithEmail(email, password).then(resolve).catch(reject);
-        }
+        console.log('❌ reCAPTCHA not loaded');
+        reject(new Error('Security verification not loaded. Please refresh the page and try again.'));
         return;
       }
 
@@ -1076,7 +1070,7 @@ function AuthModal({ mode = 'signup', onClose }: { mode?: 'signin' | 'signup'; o
       window.grecaptcha.enterprise.ready(async () => {
         try {
           // Execute reCAPTCHA
-          const token = await window.grecaptcha.enterprise.execute('6LczPKArAAAAAH2S3T1Jq0bbSVuaEmNnLsFeqeDf', { action });
+          const token = await window.grecaptcha.enterprise.execute('6LczPKArAAAAAH2S3TlJq0bbSVuaEmNnLsFeqeDf', { action });
           
           // Verify the token with our backend
           const verifyRecaptcha = httpsCallable(functions, 'verifyRecaptcha');
@@ -1095,17 +1089,17 @@ function AuthModal({ mode = 'signup', onClose }: { mode?: 'signin' | 'signup'; o
           setRecaptchaLoading(false);
           console.error('reCAPTCHA verification failed:', error);
           
-          // TEMPORARY FIX: If reCAPTCHA fails, proceed without it
-          console.log('⚠️ reCAPTCHA failed, proceeding without verification (temporary)');
-          try {
-            if (action === 'SIGNUP') {
-              await signUpWithEmail(email, password);
+          // Provide user-friendly error messages
+          if (error instanceof Error) {
+            if (error.message.includes('permission-denied')) {
+              reject(new Error('Security verification failed. Please try again.'));
+            } else if (error.message.includes('network')) {
+              reject(new Error('Network error. Please check your connection and try again.'));
             } else {
-              await signInWithEmail(email, password);
+              reject(new Error('Security verification failed. Please refresh the page and try again.'));
             }
-            resolve();
-          } catch (authError) {
-            reject(authError);
+          } else {
+            reject(new Error('Security verification failed. Please try again.'));
           }
         }
       });
@@ -1333,7 +1327,7 @@ function AuthModal({ mode = 'signup', onClose }: { mode?: 'signin' | 'signup'; o
           {!isResetPassword && (
             <div className="text-center mt-4 mb-2">
               <p className="text-xs text-slate-500">
-                ⚠️ Security verification temporarily disabled
+                🛡️ Protected by reCAPTCHA Enterprise
               </p>
             </div>
           )}
