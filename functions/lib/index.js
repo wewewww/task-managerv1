@@ -7,30 +7,66 @@ const admin = require("firebase-admin");
 admin.initializeApp();
 const db = admin.firestore();
 const messaging = admin.messaging();
-// reCAPTCHA verification function
+// reCAPTCHA Enterprise verification function
 async function verifyRecaptchaToken(token, expectedAction) {
+    var _a, _b, _c, _d, _e, _f, _g;
     try {
-        const secretKey = '6LczPKArAAAAAH2S3T1Jq0bbSVuaEmNnLsFeqeDf'; // This should be your secret key
-        const response = await fetch('https://www.google.com/recaptcha/api/siteverify', {
+        const projectId = 'todo-tracker-2ec93';
+        const siteKey = '6LczPKArAAAAAH2S3T1Jq0bbSVuaEmNnLsFeqeDf';
+        // Try API key authentication first (recommended for this use case)
+        const apiKey = (_a = functions.config().recaptcha) === null || _a === void 0 ? void 0 : _a.api_key;
+        if (!apiKey) {
+            console.error('reCAPTCHA API key not configured. Please run: npx firebase-tools functions:config:set recaptcha.api_key="YOUR_API_KEY"');
+            return false;
+        }
+        const requestBody = {
+            event: {
+                token: token,
+                expectedAction: expectedAction,
+                siteKey: siteKey
+            }
+        };
+        console.log('Making reCAPTCHA Enterprise API request:', {
+            projectId,
+            expectedAction,
+            tokenLength: token.length
+        });
+        const response = await fetch(`https://recaptchaenterprise.googleapis.com/v1/projects/${projectId}/assessments?key=${apiKey}`, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
+                'Content-Type': 'application/json',
             },
-            body: `secret=${secretKey}&response=${token}`
+            body: JSON.stringify(requestBody)
         });
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('reCAPTCHA API request failed:', {
+                status: response.status,
+                statusText: response.statusText,
+                error: errorText
+            });
+            return false;
+        }
         const data = await response.json();
-        console.log('reCAPTCHA verification result:', {
-            success: data.success,
-            action: data.action,
-            score: data.score,
+        console.log('reCAPTCHA Enterprise verification result:', {
+            tokenProperties: data.tokenProperties,
+            riskAnalysis: data.riskAnalysis,
             expectedAction
         });
-        // Check if verification was successful and action matches
-        if (data.success && data.action === expectedAction) {
-            // For reCAPTCHA v3, also check the score (0.0 to 1.0, higher is better)
+        // Check if token is valid and action matches
+        if (((_b = data.tokenProperties) === null || _b === void 0 ? void 0 : _b.valid) && ((_c = data.tokenProperties) === null || _c === void 0 ? void 0 : _c.action) === expectedAction) {
+            // Check the risk score (0.0 to 1.0, higher is better)
+            const score = ((_d = data.riskAnalysis) === null || _d === void 0 ? void 0 : _d.score) || 0;
+            console.log(`reCAPTCHA score: ${score}`);
             // You can adjust this threshold based on your needs
-            return data.score >= 0.5;
+            return score >= 0.5;
         }
+        console.log('reCAPTCHA verification failed:', {
+            valid: (_e = data.tokenProperties) === null || _e === void 0 ? void 0 : _e.valid,
+            action: (_f = data.tokenProperties) === null || _f === void 0 ? void 0 : _f.action,
+            expectedAction,
+            reasons: (_g = data.tokenProperties) === null || _g === void 0 ? void 0 : _g.invalidReason
+        });
         return false;
     }
     catch (error) {

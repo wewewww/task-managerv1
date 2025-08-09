@@ -10,10 +10,16 @@ const messaging = admin.messaging();
 // reCAPTCHA Enterprise verification function
 async function verifyRecaptchaToken(token: string, expectedAction: string): Promise<boolean> {
   try {
-    // You need to set this as an environment variable or Firebase config
-    const apiKey = functions.config().recaptcha?.api_key || 'YOUR_API_KEY_HERE';
     const projectId = 'todo-tracker-2ec93';
     const siteKey = '6LczPKArAAAAAH2S3T1Jq0bbSVuaEmNnLsFeqeDf';
+    
+    // Try API key authentication first (recommended for this use case)
+    const apiKey = functions.config().recaptcha?.api_key;
+    
+    if (!apiKey) {
+      console.error('reCAPTCHA API key not configured. Please run: npx firebase-tools functions:config:set recaptcha.api_key="YOUR_API_KEY"');
+      return false;
+    }
     
     const requestBody = {
       event: {
@@ -22,6 +28,12 @@ async function verifyRecaptchaToken(token: string, expectedAction: string): Prom
         siteKey: siteKey
       }
     };
+    
+    console.log('Making reCAPTCHA Enterprise API request:', {
+      projectId,
+      expectedAction,
+      tokenLength: token.length
+    });
     
     const response = await fetch(
       `https://recaptchaenterprise.googleapis.com/v1/projects/${projectId}/assessments?key=${apiKey}`,
@@ -35,7 +47,12 @@ async function verifyRecaptchaToken(token: string, expectedAction: string): Prom
     );
     
     if (!response.ok) {
-      console.error('reCAPTCHA API request failed:', response.status, response.statusText);
+      const errorText = await response.text();
+      console.error('reCAPTCHA API request failed:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText
+      });
       return false;
     }
     
