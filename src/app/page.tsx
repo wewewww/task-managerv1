@@ -956,6 +956,48 @@ function AuthModal({ mode = 'signup', onClose }: { mode?: 'signin' | 'signup'; o
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [recaptchaLoading, setRecaptchaLoading] = useState(false);
+  const [passwordFocused, setPasswordFocused] = useState(false);
+  const [showPasswordRequirements, setShowPasswordRequirements] = useState(false);
+
+  // Password validation functions
+  const validatePassword = (pwd: string) => {
+    return {
+      length: pwd.length >= 8,
+      uppercase: /[A-Z]/.test(pwd),
+      lowercase: /[a-z]/.test(pwd),
+      number: /\d/.test(pwd),
+      special: /[!@#$%^&*(),.?":{}|<>]/.test(pwd),
+      minLength: pwd.length >= 6 // Firebase minimum
+    };
+  };
+
+  const getPasswordStrength = (pwd: string) => {
+    const checks = validatePassword(pwd);
+    const score = Object.values(checks).filter(Boolean).length;
+    
+    if (score < 2) return { level: 'weak', color: 'text-red-400', bgColor: 'bg-red-500' };
+    if (score < 4) return { level: 'fair', color: 'text-yellow-400', bgColor: 'bg-yellow-500' };
+    if (score < 5) return { level: 'good', color: 'text-blue-400', bgColor: 'bg-blue-500' };
+    return { level: 'strong', color: 'text-green-400', bgColor: 'bg-green-500' };
+  };
+
+  const isPasswordValid = (pwd: string) => {
+    const checks = validatePassword(pwd);
+    return checks.minLength; // At minimum, must meet Firebase requirements
+  };
+
+  const getPasswordErrors = (pwd: string) => {
+    const checks = validatePassword(pwd);
+    const errors = [];
+    
+    if (!checks.minLength) errors.push('At least 6 characters required');
+    if (!checks.uppercase) errors.push('Add an uppercase letter (A-Z)');
+    if (!checks.lowercase) errors.push('Add a lowercase letter (a-z)');
+    if (!checks.number) errors.push('Add a number (0-9)');
+    if (!checks.special) errors.push('Add a special character (!@#$%^&*)');
+    
+    return errors;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -968,11 +1010,14 @@ function AuthModal({ mode = 'signup', onClose }: { mode?: 'signin' | 'signup'; o
         alert('Password reset email sent! Check your inbox.');
         setIsResetPassword(false);
       } else if (isSignUp) {
-        if (password !== confirmPassword) {
-          throw new Error('Passwords do not match');
+        // Enhanced password validation with detailed feedback
+        if (!isPasswordValid(password)) {
+          const errors = getPasswordErrors(password);
+          throw new Error(`Password requirements not met:\n• ${errors.join('\n• ')}`);
         }
-        if (password.length < 6) {
-          throw new Error('Password must be at least 6 characters');
+        
+        if (password !== confirmPassword) {
+          throw new Error('Passwords do not match. Please check both password fields.');
         }
         
         // Execute reCAPTCHA for signup
@@ -1096,18 +1141,96 @@ function AuthModal({ mode = 'signup', onClose }: { mode?: 'signin' | 'signup'; o
 
           {!isResetPassword && (
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-slate-300 mb-1">
-                Password
-              </label>
+              <div className="flex justify-between items-center mb-1">
+                <label htmlFor="password" className="block text-sm font-medium text-slate-300">
+                  Password
+                </label>
+                {isSignUp && password && (
+                  <span className={`text-xs font-medium ${getPasswordStrength(password).color}`}>
+                    {getPasswordStrength(password).level.charAt(0).toUpperCase() + getPasswordStrength(password).level.slice(1)}
+                  </span>
+                )}
+              </div>
               <input
                 type="password"
                 id="password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (isSignUp) {
+                    setShowPasswordRequirements(e.target.value.length > 0 && !isPasswordValid(e.target.value));
+                  }
+                }}
+                onFocus={() => {
+                  setPasswordFocused(true);
+                  if (isSignUp) setShowPasswordRequirements(true);
+                }}
+                onBlur={() => {
+                  setPasswordFocused(false);
+                  if (isSignUp && isPasswordValid(password)) {
+                    setShowPasswordRequirements(false);
+                  }
+                }}
                 required
-                className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className={`w-full bg-slate-700 border rounded-lg px-3 py-2 text-white placeholder-slate-400 focus:outline-none focus:ring-2 transition-colors ${
+                  isSignUp && password 
+                    ? isPasswordValid(password) 
+                      ? 'border-green-500 focus:ring-green-500' 
+                      : 'border-red-500 focus:ring-red-500'
+                    : 'border-slate-600 focus:ring-blue-500'
+                }`}
                 placeholder="Enter your password"
               />
+              
+              {/* Password strength indicator */}
+              {isSignUp && password && (
+                <div className="mt-2">
+                  <div className="flex space-x-1 mb-2">
+                    {[1, 2, 3, 4].map((level) => (
+                      <div
+                        key={level}
+                        className={`h-1 flex-1 rounded-full transition-colors ${
+                          Object.values(validatePassword(password)).filter(Boolean).length >= level
+                            ? getPasswordStrength(password).bgColor
+                            : 'bg-slate-600'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Password requirements */}
+              {isSignUp && showPasswordRequirements && (
+                <div className="mt-2 p-3 bg-slate-700/50 rounded-lg border border-slate-600">
+                  <div className="text-xs font-medium text-slate-300 mb-2">Password Requirements:</div>
+                  <div className="space-y-1">
+                    {[
+                      { key: 'minLength', text: 'At least 6 characters', check: validatePassword(password).minLength },
+                      { key: 'length', text: 'At least 8 characters (recommended)', check: validatePassword(password).length },
+                      { key: 'uppercase', text: 'One uppercase letter (A-Z)', check: validatePassword(password).uppercase },
+                      { key: 'lowercase', text: 'One lowercase letter (a-z)', check: validatePassword(password).lowercase },
+                      { key: 'number', text: 'One number (0-9)', check: validatePassword(password).number },
+                      { key: 'special', text: 'One special character (!@#$%^&*)', check: validatePassword(password).special }
+                    ].map(({ key, text, check }) => (
+                      <div key={key} className="flex items-center space-x-2">
+                        <div className={`w-4 h-4 rounded-full flex items-center justify-center ${
+                          check ? 'bg-green-500' : 'bg-slate-600'
+                        }`}>
+                          {check && (
+                            <svg className="w-2 h-2 text-white" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                            </svg>
+                          )}
+                        </div>
+                        <span className={`text-xs ${check ? 'text-green-400' : 'text-slate-400'}`}>
+                          {text}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -1122,9 +1245,31 @@ function AuthModal({ mode = 'signup', onClose }: { mode?: 'signin' | 'signup'; o
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
-                className="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className={`w-full bg-slate-700 border rounded-lg px-3 py-2 text-white placeholder-slate-400 focus:outline-none focus:ring-2 transition-colors ${
+                  confirmPassword
+                    ? password === confirmPassword
+                      ? 'border-green-500 focus:ring-green-500'
+                      : 'border-red-500 focus:ring-red-500'
+                    : 'border-slate-600 focus:ring-blue-500'
+                }`}
                 placeholder="Confirm your password"
               />
+              {confirmPassword && password !== confirmPassword && (
+                <div className="mt-1 text-xs text-red-400 flex items-center">
+                  <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                  Passwords do not match
+                </div>
+              )}
+              {confirmPassword && password === confirmPassword && (
+                <div className="mt-1 text-xs text-green-400 flex items-center">
+                  <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                  Passwords match
+                </div>
+              )}
             </div>
           )}
 
