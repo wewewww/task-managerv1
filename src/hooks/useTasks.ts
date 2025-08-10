@@ -6,6 +6,35 @@ import { taskService } from '../lib/taskService';
 import { useAuth } from './useAuth';
 import { notificationService } from '../lib/notificationService';
 
+// Helper functions for quadrant calculations
+function getQuadrant(importance: number, urgency: number) {
+  if (importance >= 6 && urgency >= 6) return "urgent-important";
+  if (importance >= 6 && urgency < 6) return "important-not-urgent";
+  if (importance < 6 && urgency >= 6) return "urgent-not-important";
+  return "not-urgent-not-important";
+}
+
+// Calculate urgency based on workload vs available time
+function calculateUrgency(task: Task, hoursPerDay: number = 8): number {
+  if (!task.dueDate || !task.estTimeHrs) {
+    return 5; // Default middle urgency
+  }
+
+  const now = new Date();
+  const dueDate = new Date(task.dueDate);
+  const timeDiff = dueDate.getTime() - now.getTime();
+  const daysAvailable = Math.max(0, Math.ceil(timeDiff / (1000 * 60 * 60 * 24)));
+  const hoursAvailable = daysAvailable * hoursPerDay;
+
+  if (hoursAvailable <= 0) {
+    return 10;
+  }
+
+  const ratio = task.estTimeHrs / hoursAvailable;
+  const urgency = Math.round(1 + 9 * ratio);
+  return Math.min(10, Math.max(1, urgency));
+}
+
 export const useTasks = () => {
   const { user } = useAuth();
   const uid = user?.uid;
@@ -15,7 +44,7 @@ export const useTasks = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<{
-    area?: TaskArea | string;
+    areas?: (TaskArea | string)[];
     status?: TaskStatus;
     quadrant?: 'urgent-important' | 'important-not-urgent' | 'urgent-not-important' | 'not-urgent-not-important';
   }>({});
@@ -159,8 +188,21 @@ export const useTasks = () => {
 
   // Filter tasks
   const filteredTasks = tasks.filter(task => {
-    if (filter.area && task.area !== filter.area) return false;
+    // Filter by multiple areas
+    if (filter.areas && filter.areas.length > 0 && !filter.areas.includes(task.area)) {
+      return false;
+    }
+    
+    // Filter by status
     if (filter.status && task.status !== filter.status) return false;
+    
+    // Filter by quadrant
+    if (filter.quadrant) {
+      const urgency = calculateUrgency(task);
+      const quadrant = getQuadrant(task.importance, urgency);
+      if (quadrant !== filter.quadrant) return false;
+    }
+    
     return true;
   });
 

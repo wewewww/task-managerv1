@@ -1506,6 +1506,25 @@ export default function HomePage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<'dateNoted' | 'importance' | 'dueDate'>('dateNoted');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element;
+      if (!target.closest('.category-dropdown')) {
+        setShowCategoryDropdown(false);
+      }
+    };
+
+    if (showCategoryDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showCategoryDropdown]);
 
   // Settings state
   // const [hoursPerDay, setHoursPerDay] = useState(DEFAULT_HOURS_PER_DAY); // This line is now redundant
@@ -1909,20 +1928,142 @@ export default function HomePage() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <div>
-                    <label className="block text-xs font-medium text-slate-300 mb-1">Area</label>
-                    <select
-                      value={filter.area || 'all'}
-                      onChange={(e) => setFilter(prev => ({ ...prev, area: e.target.value === 'all' ? undefined : e.target.value }))}
-                      className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                    >
-                      <option value="all">All Areas</option>
-                      {categories.map(cat => (
-                        <option key={cat.id} value={cat.name}>{cat.name}</option>
-                      ))}
-                      {AREA_OPTIONS.map(opt => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                      ))}
-                    </select>
+                    <label className="block text-xs font-medium text-slate-300 mb-1">Categories</label>
+                    
+                    {/* Selected Categories Display */}
+                    {filter.areas && filter.areas.length > 0 && (
+                      <div className="mb-2 flex flex-wrap gap-1">
+                        {filter.areas.map((area, index) => {
+                          const category = categories.find(cat => cat.name === area);
+                          const defaultArea = AREA_OPTIONS.find(opt => opt.value === area);
+                          const color = category?.color || defaultArea?.color || '#6b7280';
+                          const label = category?.name || defaultArea?.label || area;
+                          
+                          return (
+                            <span
+                              key={index}
+                              className="inline-flex items-center space-x-1 px-2 py-1 text-xs rounded-full text-white"
+                              style={{ backgroundColor: color }}
+                            >
+                              <span>{label}</span>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const currentAreas = filter.areas || [];
+                                  setFilter(prev => ({ 
+                                    ...prev, 
+                                    areas: currentAreas.filter(a => a !== area)
+                                  }));
+                                }}
+                                className="ml-1 hover:bg-white/20 rounded-full w-4 h-4 flex items-center justify-center"
+                              >
+                                ×
+                              </button>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <div className="category-dropdown relative">
+                      <div 
+                        onClick={() => setShowCategoryDropdown(!showCategoryDropdown)}
+                        className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm cursor-pointer flex items-center justify-between"
+                      >
+                        <span className={filter.areas && filter.areas.length > 0 ? 'text-white' : 'text-slate-400'}>
+                          {filter.areas && filter.areas.length > 0 
+                            ? `${filter.areas.length} selected` 
+                            : 'All Categories'
+                          }
+                        </span>
+                        <svg className={`w-4 h-4 transition-transform ${showCategoryDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </div>
+                      
+                      {showCategoryDropdown && (
+                        <div className="category-dropdown absolute z-50 w-full mt-1 bg-slate-700 border border-slate-600 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                          <div className="p-2">
+                            {/* Select All Option */}
+                            <label className="flex items-center space-x-2 p-2 hover:bg-slate-600 rounded cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={!filter.areas || filter.areas.length === 0}
+                                onChange={() => {
+                                  setFilter(prev => ({ ...prev, areas: undefined }));
+                                  setShowCategoryDropdown(false);
+                                }}
+                                className="rounded border-slate-500 text-blue-500 focus:ring-blue-500"
+                              />
+                              <span className="text-sm text-white">All Categories</span>
+                            </label>
+                            
+                            {/* Custom Categories */}
+                            {categories.map(cat => (
+                              <label key={cat.id} className="flex items-center space-x-2 p-2 hover:bg-slate-600 rounded cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={filter.areas?.includes(cat.name) || false}
+                                  onChange={(e) => {
+                                    const currentAreas = filter.areas || [];
+                                    if (e.target.checked) {
+                                      setFilter(prev => ({ 
+                                        ...prev, 
+                                        areas: [...currentAreas, cat.name]
+                                      }));
+                                    } else {
+                                      setFilter(prev => ({ 
+                                        ...prev, 
+                                        areas: currentAreas.filter(area => area !== cat.name)
+                                      }));
+                                    }
+                                  }}
+                                  className="rounded border-slate-500 text-blue-500 focus:ring-blue-500"
+                                />
+                                <div className="flex items-center space-x-2">
+                                  <div 
+                                    className="w-3 h-3 rounded-full" 
+                                    style={{ backgroundColor: cat.color }}
+                                  ></div>
+                                  <span className="text-sm text-white">{cat.name}</span>
+                                </div>
+                              </label>
+                            ))}
+                            
+                            {/* Default Areas */}
+                            {AREA_OPTIONS.map(opt => (
+                              <label key={opt.value} className="flex items-center space-x-2 p-2 hover:bg-slate-600 rounded cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={filter.areas?.includes(opt.value) || false}
+                                  onChange={(e) => {
+                                    const currentAreas = filter.areas || [];
+                                    if (e.target.checked) {
+                                      setFilter(prev => ({ 
+                                        ...prev, 
+                                        areas: [...currentAreas, opt.value]
+                                      }));
+                                    } else {
+                                      setFilter(prev => ({ 
+                                        ...prev, 
+                                        areas: currentAreas.filter(area => area !== opt.value)
+                                      }));
+                                    }
+                                  }}
+                                  className="rounded border-slate-500 text-blue-500 focus:ring-blue-500"
+                                />
+                                <div className="flex items-center space-x-2">
+                                  <div 
+                                    className="w-3 h-3 rounded-full" 
+                                    style={{ backgroundColor: opt.color }}
+                                  ></div>
+                                  <span className="text-sm text-white">{opt.label}</span>
+                                </div>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   <div>
@@ -1971,11 +2112,12 @@ export default function HomePage() {
                   </select>
                 </div>
 
-                {(searchTerm || filter.area || filter.status || filter.quadrant) && (
+                {(searchTerm || filter.areas || filter.status || filter.quadrant) && (
                   <button
                     onClick={() => {
                       setSearchTerm('');
                       setFilter({});
+                      setShowCategoryDropdown(false);
                     }}
                     className="w-full text-slate-400 hover:text-white text-xs transition-colors"
                   >
