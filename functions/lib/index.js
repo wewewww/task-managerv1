@@ -317,7 +317,11 @@ function extractUserIdFromEmail(emailAddress) {
     }
     // Expected format: userId@tasks.yourdomain.com or userId@sandbox...mailgun.org
     const match = sanitizedEmail.match(/^([^@]+)@/);
-    return match ? match[1] : null;
+    if (!match) {
+        return null;
+    }
+    // Return the original case-sensitive user ID
+    return match[1];
 }
 // Helper function to sanitize and validate subject
 function sanitizeSubject(subject) {
@@ -771,18 +775,34 @@ exports.processEmailTask = functions.https.onRequest(async (req, res) => {
             });
             return;
         }
-        // Check if user exists
+        // Check if user exists (try case-sensitive first, then case-insensitive)
         let userDoc;
+        let actualUserId = userId;
         try {
+            // First try exact match
             userDoc = await db.collection('users').doc(userId).get();
             if (!userDoc.exists) {
-                console.log('User not found:', userId);
-                res.status(404).json({
-                    success: false,
-                    error: 'User not found',
-                    details: { userId }
-                });
-                return;
+                console.log('User not found with exact case, trying case-insensitive search...');
+                // Try case-insensitive search
+                const usersSnapshot = await db.collection('users').get();
+                const matchingUser = usersSnapshot.docs.find(doc => doc.id.toLowerCase() === userId.toLowerCase());
+                if (matchingUser) {
+                    actualUserId = matchingUser.id;
+                    userDoc = matchingUser;
+                    console.log('Found user with case-insensitive match:', actualUserId);
+                }
+                else {
+                    console.log('User not found with case-insensitive search:', userId);
+                    res.status(404).json({
+                        success: false,
+                        error: 'User not found',
+                        details: {
+                            requestedUserId: userId,
+                            availableUsers: usersSnapshot.docs.map(doc => doc.id).slice(0, 5) // Show first 5 for debugging
+                        }
+                    });
+                    return;
+                }
             }
         }
         catch (error) {
@@ -825,7 +845,8 @@ exports.processEmailTask = functions.https.onRequest(async (req, res) => {
         });
         // Create task in Firestore with comprehensive error handling
         try {
-            const taskData = Object.assign(Object.assign({}, emailTask), { dateNoted: admin.firestore.FieldValue.serverTimestamp(), status: 'open', userId });
+            const taskData = Object.assign(Object.assign({}, emailTask), { dateNoted: admin.firestore.FieldValue.serverTimestamp(), status: 'open', userId: actualUserId // Use the case-corrected user ID
+             });
             // Remove undefined values to avoid Firestore errors
             Object.keys(taskData).forEach(key => {
                 if (taskData[key] === undefined) {
@@ -845,10 +866,10 @@ exports.processEmailTask = functions.https.onRequest(async (req, res) => {
             console.log('Creating task in Firestore...');
             const taskRef = await db
                 .collection('users')
-                .doc(userId)
+                .doc(actualUserId) // Use the case-corrected user ID
                 .collection('tasks')
                 .add(taskData);
-            console.log(`Task created successfully from email for user ${userId}:`, taskRef.id);
+            console.log(`Task created successfully from email for user ${actualUserId}:`, taskRef.id);
             // Send confirmation response
             res.status(200).json({
                 success: true,
