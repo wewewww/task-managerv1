@@ -487,12 +487,43 @@ exports.processEmailTask = functions.https.onRequest(async (req, res) => {
         // If body is an array (common with some webhook formats), try to extract data
         if (Array.isArray(parsedBody)) {
             console.log('Body is an array with length:', parsedBody.length);
-            // Try to find email data in the array
-            const emailData = parsedBody.find(item => item && typeof item === 'object' &&
-                (item.from || item.to || item.subject || item.sender || item.recipient));
-            if (emailData) {
-                parsedBody = emailData;
-                console.log('Found email data in array');
+            // For small arrays, try to find email data in each item
+            if (parsedBody.length <= 100) {
+                console.log('Small array detected, searching for email data...');
+                // Look for email data in each array item
+                for (let i = 0; i < parsedBody.length; i++) {
+                    const item = parsedBody[i];
+                    if (item && typeof item === 'object' &&
+                        (item.from || item.to || item.subject || item.sender || item.recipient)) {
+                        console.log(`Found email data in array item ${i}`);
+                        parsedBody = item;
+                        break;
+                    }
+                    else if (item && typeof item === 'string') {
+                        // Try to parse string items as JSON
+                        try {
+                            const parsed = JSON.parse(item);
+                            if (parsed && typeof parsed === 'object' &&
+                                (parsed.from || parsed.to || parsed.subject || parsed.sender || parsed.recipient)) {
+                                console.log(`Found email data in parsed string item ${i}`);
+                                parsedBody = parsed;
+                                break;
+                            }
+                        }
+                        catch (e) {
+                            // Not JSON, continue
+                        }
+                    }
+                }
+            }
+            else {
+                // For large arrays, use the original logic
+                const emailData = parsedBody.find(item => item && typeof item === 'object' &&
+                    (item.from || item.to || item.subject || item.sender || item.recipient));
+                if (emailData) {
+                    parsedBody = emailData;
+                    console.log('Found email data in large array');
+                }
             }
         }
         console.log('Parsed body keys:', Object.keys(parsedBody || {}));
