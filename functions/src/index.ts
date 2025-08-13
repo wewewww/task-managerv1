@@ -628,6 +628,9 @@ export const processEmailTask = functions.https.onRequest(async (req, res) => {
     console.log('Content-Type:', req.headers['content-type']);
     console.log('Body type:', typeof req.body);
     
+    // Initialize email data variables
+    let from: string | undefined, to: string | undefined, subject: string | undefined, text: string | undefined, html: string | undefined;
+    
     // Handle different content types and body formats
     let parsedBody = req.body;
     
@@ -645,6 +648,7 @@ export const processEmailTask = functions.https.onRequest(async (req, res) => {
     // If body is an array (common with some webhook formats), try to extract data
     if (Array.isArray(parsedBody)) {
       console.log('Body is an array with length:', parsedBody.length);
+      console.log('Array type check passed, proceeding with array processing...');
       
       // For small arrays, try to find email data in each item
       if (parsedBody.length <= 100) {
@@ -675,14 +679,40 @@ export const processEmailTask = functions.https.onRequest(async (req, res) => {
           }
         }
       } else {
-        // For large arrays, use the original logic
-        const emailData = parsedBody.find(item => 
-          item && typeof item === 'object' && 
-          (item.from || item.to || item.subject || item.sender || item.recipient)
-        );
-        if (emailData) {
-          parsedBody = emailData;
-          console.log('Found email data in large array');
+        // For large arrays (forwarded email content), try to extract email headers
+        console.log('Large array detected - likely forwarded email content, extracting headers...');
+        console.log('Array length is:', parsedBody.length, 'which is > 100, so using large array processing...');
+        
+        // Convert array to string and search for email headers
+        try {
+          const arrayStr = JSON.stringify(parsedBody);
+          
+          // Extract email headers using regex patterns
+          const fromMatch = arrayStr.match(/"from":\s*"([^"]+)"/i);
+          const toMatch = arrayStr.match(/"to":\s*"([^"]+)"/i);
+          const subjectMatch = arrayStr.match(/"subject":\s*"([^"]+)"/i);
+          const bodyPlainMatch = arrayStr.match(/"body-plain":\s*"([^"]+)"/i);
+          const bodyHtmlMatch = arrayStr.match(/"body-html":\s*"([^"]+)"/i);
+          
+          if (fromMatch) from = fromMatch[1];
+          if (toMatch) to = toMatch[1];
+          if (subjectMatch) subject = subjectMatch[1];
+          if (bodyPlainMatch) text = bodyPlainMatch[1];
+          if (bodyHtmlMatch) html = bodyHtmlMatch[1];
+          
+          console.log('Email header extraction results:', { 
+            from: !!from, 
+            to: !!to, 
+            subject: !!subject, 
+            textLength: text?.length,
+            htmlLength: html?.length
+          });
+          
+          if (from && to && subject) {
+            console.log('Successfully extracted email data from forwarded content');
+          }
+        } catch (error) {
+          console.error('Error extracting email headers from large array:', error);
         }
       }
     }
@@ -707,7 +737,6 @@ export const processEmailTask = functions.https.onRequest(async (req, res) => {
     }
     
     // Handle Mailgun webhook format
-    let from, to, subject, text, html;
     
     console.log('=== EXTRACTING EMAIL DATA ===');
     console.log('Has event-data:', !!parsedBody['event-data']);
