@@ -21,6 +21,7 @@ async function verifyRecaptchaToken(token: string, expectedAction: string): Prom
       return false;
     }
     
+    
     const requestBody = {
       event: {
         token: token,
@@ -713,6 +714,100 @@ export const processEmailTask = functions.https.onRequest(async (req, res) => {
           }
         } catch (error) {
           console.error('Error extracting email headers from large array:', error);
+        }
+      }
+    }
+    
+    // If body is an object with numeric keys (array-like), coerce and extract
+    if (!Array.isArray(parsedBody) && parsedBody && typeof parsedBody === 'object') {
+      const objectKeys = Object.keys(parsedBody);
+      const numericKeys = objectKeys.filter(k => /^\d+$/.test(k));
+      if (numericKeys.length > 0 && numericKeys.length >= Math.floor(objectKeys.length * 0.5)) {
+        console.log('Array-like object detected with numeric keys:', numericKeys.length);
+        try {
+          const orderedItems = numericKeys
+            .sort((a, b) => Number(a) - Number(b))
+            .map((k) => (parsedBody as any)[k]);
+
+          // Scan items for email-like objects or parsable strings
+          for (let i = 0; i < orderedItems.length; i++) {
+            const item = orderedItems[i];
+            if (item && typeof item === 'object') {
+              // Direct headers
+              if (item.headers && typeof item.headers === 'object') {
+                const hdrs = item.headers as Record<string, unknown>;
+                if ((hdrs.from || hdrs.to || hdrs.subject)) {
+                  from = typeof hdrs.from === 'string' ? hdrs.from : from;
+                  to = typeof hdrs.to === 'string' ? hdrs.to : to;
+                  subject = typeof hdrs.subject === 'string' ? hdrs.subject : subject;
+                  console.log(`Found headers in array-like item ${i}`);
+                  break;
+                }
+              }
+              // Message.headers (Mailgun storage message object)
+              if (item.message && typeof item.message === 'object') {
+                const msg = item.message;
+                if (msg.headers && typeof msg.headers === 'object') {
+                  const hdrs = msg.headers as Record<string, unknown>;
+                  from = typeof hdrs.from === 'string' ? hdrs.from : from;
+                  to = typeof hdrs.to === 'string' ? hdrs.to : to;
+                  subject = typeof hdrs.subject === 'string' ? hdrs.subject : subject;
+                  console.log(`Found message.headers in array-like item ${i}`);
+                  break;
+                }
+                if (typeof msg["body-plain"] === 'string') {
+                  text = msg["body-plain"];
+                }
+                if (typeof msg["body-html"] === 'string') {
+                  html = msg["body-html"];
+                }
+              }
+              // Direct fields
+              if ((item.from || item.to || item.subject)) {
+                from = typeof item.from === 'string' ? item.from : from;
+                to = typeof item.to === 'string' ? item.to : to;
+                subject = typeof item.subject === 'string' ? item.subject : subject;
+                console.log(`Found direct fields in array-like item ${i}`);
+                break;
+              }
+            } else if (item && typeof item === 'string') {
+              // Try to parse stringified JSON
+              try {
+                const parsed = JSON.parse(item);
+                if (parsed && typeof parsed === 'object') {
+                  if (parsed.headers && typeof parsed.headers === 'object') {
+                    const hdrs = parsed.headers as Record<string, unknown>;
+                    from = typeof hdrs.from === 'string' ? hdrs.from : from;
+                    to = typeof hdrs.to === 'string' ? hdrs.to : to;
+                    subject = typeof hdrs.subject === 'string' ? hdrs.subject : subject;
+                    console.log(`Found headers in parsed string item ${i}`);
+                    break;
+                  }
+                  if (parsed.message && parsed.message.headers && typeof parsed.message.headers === 'object') {
+                    const hdrs = parsed.message.headers as Record<string, unknown>;
+                    from = typeof hdrs.from === 'string' ? hdrs.from : from;
+                    to = typeof hdrs.to === 'string' ? hdrs.to : to;
+                    subject = typeof hdrs.subject === 'string' ? hdrs.subject : subject;
+                    console.log(`Found message.headers in parsed string item ${i}`);
+                    break;
+                  }
+                  // Body fields
+                  if (typeof parsed["body-plain"] === 'string') {
+                    text = parsed["body-plain"];
+                  }
+                  if (typeof parsed["body-html"] === 'string') {
+                    html = parsed["body-html"];
+                  }
+                }
+              } catch (e) {
+                // ignore
+              }
+            }
+          }
+
+          console.log('Array-like extraction results:', { hasFrom: !!from, hasTo: !!to, hasSubject: !!subject, textLength: text?.length, htmlLength: html?.length });
+        } catch (e) {
+          console.error('Failed processing array-like object payload:', e);
         }
       }
     }
