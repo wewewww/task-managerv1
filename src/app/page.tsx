@@ -1424,6 +1424,7 @@ export default function HomePage() {
     loading,
     createTask,
     updateTaskStatus,
+    undoTaskCompletion,
     updateTask,
     deleteTask,
     filter,
@@ -1926,7 +1927,7 @@ export default function HomePage() {
                   />
                 </div>
 
-                <div>
+                  <div>
                   <label className="block text-xs font-medium text-slate-300 mb-1">Categories</label>
                   
                   {/* Multi-Select Dropdown with Checkboxes */}
@@ -1964,7 +1965,7 @@ export default function HomePage() {
                           </label>
                           
                           {/* Custom Categories */}
-                          {categories.map(cat => (
+                      {categories.map(cat => (
                             <label key={cat.id} className="flex items-center space-x-2 p-2 hover:bg-slate-600 rounded cursor-pointer">
                               <input
                                 type="checkbox"
@@ -1996,7 +1997,7 @@ export default function HomePage() {
                           ))}
                           
                           {/* Default Areas */}
-                          {AREA_OPTIONS.map(opt => (
+                      {AREA_OPTIONS.map(opt => (
                             <label key={opt.value} className="flex items-center space-x-2 p-2 hover:bg-slate-600 rounded cursor-pointer">
                               <input
                                 type="checkbox"
@@ -2030,20 +2031,20 @@ export default function HomePage() {
                       </div>
                     )}
                   </div>
-                </div>
+                  </div>
 
-                <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">Status</label>
-                  <select
-                    value={filter.status || 'all'}
-                    onChange={(e) => setFilter(prev => ({ ...prev, status: e.target.value === 'all' ? undefined : e.target.value as 'open' | 'complete' }))}
-                    className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                  >
-                    <option value="all">All Status</option>
-                    <option value="open">Open</option>
-                    <option value="complete">Completed</option>
-                  </select>
-                </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-300 mb-1">Status</label>
+                    <select
+                      value={filter.status || 'all'}
+                      onChange={(e) => setFilter(prev => ({ ...prev, status: e.target.value === 'all' ? undefined : e.target.value as 'open' | 'complete' }))}
+                      className="w-full bg-slate-700/50 border border-slate-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                    >
+                      <option value="all">All Status</option>
+                      <option value="open">Open</option>
+                      <option value="complete">Completed</option>
+                    </select>
+                  </div>
 
                 <div>
                   <label className="block text-xs font-medium text-slate-300 mb-1">Quadrant</label>
@@ -2326,7 +2327,7 @@ export default function HomePage() {
                         </div>
                         
                         <div className="flex gap-1 sm:gap-2 ml-2 sm:ml-3 flex-shrink-0">
-                          {task.status !== 'complete' && (
+                          {task.status !== 'complete' ? (
                             <button
                               className="px-2 sm:px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-xs font-medium transition-colors"
                               onClick={(e) => {
@@ -2335,6 +2336,17 @@ export default function HomePage() {
                               }}
                             >
                               ✓
+                            </button>
+                          ) : (
+                            <button
+                              className="px-2 sm:px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded text-xs font-medium transition-colors"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                undoTaskCompletion(task.id);
+                              }}
+                              title="Undo completion"
+                            >
+                              ↶
                             </button>
                           )}
                           <button

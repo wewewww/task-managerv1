@@ -719,9 +719,19 @@ export const processEmailTask = functions.https.onRequest(async (req, res) => {
     }
     
     // If body is an object with numeric keys (array-like), coerce and extract
+    console.log('Checking for array-like object...');
+    console.log('parsedBody type:', typeof parsedBody);
+    console.log('parsedBody isArray:', Array.isArray(parsedBody));
+    
     if (!Array.isArray(parsedBody) && parsedBody && typeof parsedBody === 'object') {
       const objectKeys = Object.keys(parsedBody);
+      console.log('Object keys count:', objectKeys.length);
+      console.log('First 10 object keys:', objectKeys.slice(0, 10));
+      
       const numericKeys = objectKeys.filter(k => /^\d+$/.test(k));
+      console.log('Numeric keys count:', numericKeys.length);
+      console.log('First 10 numeric keys:', numericKeys.slice(0, 10));
+      
       if (numericKeys.length > 0 && numericKeys.length >= Math.floor(objectKeys.length * 0.5)) {
         console.log('Array-like object detected with numeric keys:', numericKeys.length);
         try {

@@ -121,6 +121,23 @@ export const useTasks = () => {
     }
   }, [uid]);
 
+  // Undo task completion (reactivate completed task)
+  const undoTaskCompletion = useCallback(async (taskId: string) => {
+    if (!uid) throw new Error('User not authenticated');
+    try {
+      setError(null);
+      await taskService.updateTaskStatus(uid, taskId, 'pending');
+      setTasks(prev => 
+        prev.map(task => 
+          task.id === taskId ? { ...task, status: 'pending' } : task
+        )
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to undo task completion');
+      throw err;
+    }
+  }, [uid]);
+
   // Update task
   const updateTask = useCallback(async (taskId: string, updates: Partial<Task>) => {
     if (!uid) throw new Error('User not authenticated');
@@ -214,6 +231,7 @@ export const useTasks = () => {
     error,
     createTask,
     updateTaskStatus,
+    undoTaskCompletion,
     updateTask,
     deleteTask,
     loadTasks,
