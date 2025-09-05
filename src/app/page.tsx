@@ -956,7 +956,6 @@ function AuthModal({ mode = 'signup', onClose }: { mode?: 'signin' | 'signup'; o
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [recaptchaLoading, setRecaptchaLoading] = useState(false);
-  const [passwordFocused, setPasswordFocused] = useState(false);
   const [showPasswordRequirements, setShowPasswordRequirements] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
 
@@ -1186,11 +1185,9 @@ function AuthModal({ mode = 'signup', onClose }: { mode?: 'signin' | 'signup'; o
                   }
                 }}
                 onFocus={() => {
-                  setPasswordFocused(true);
                   if (isSignUp) setShowPasswordRequirements(true);
                 }}
                 onBlur={() => {
-                  setPasswordFocused(false);
                   if (isSignUp && isPasswordValid(password)) {
                     setShowPasswordRequirements(false);
                   }

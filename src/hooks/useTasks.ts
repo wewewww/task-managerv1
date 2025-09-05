@@ -126,10 +126,10 @@ export const useTasks = () => {
     if (!uid) throw new Error('User not authenticated');
     try {
       setError(null);
-      await taskService.updateTaskStatus(uid, taskId, 'pending');
+      await taskService.updateTaskStatus(uid, taskId, 'open');
       setTasks(prev => 
         prev.map(task => 
-          task.id === taskId ? { ...task, status: 'pending' } : task
+          task.id === taskId ? { ...task, status: 'open' } : task
         )
       );
     } catch (err) {
