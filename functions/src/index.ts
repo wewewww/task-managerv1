@@ -1,5 +1,6 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
+const Busboy = require('busboy');
 
 // Initialize Firebase Admin
 admin.initializeApp();
@@ -572,6 +573,225 @@ function extractImportanceFromSubject(subject: string): number {
 }
 
 // Helper function to clean email body
+// Helper function to process email data and create task
+async function processEmailData(
+  from: string | undefined,
+  to: string | undefined,
+  subject: string | undefined,
+  text: string | undefined,
+  html: string | undefined,
+  res: functions.Response
+): Promise<void> {
+  // Sanitize and validate extracted email data
+  const sanitizedFrom = validateAndSanitizeEmail(from || '');
+  const sanitizedTo = validateAndSanitizeEmail(to || '');
+  const sanitizedSubject = sanitizeSubject(subject || '');
+  const sanitizedText = sanitizeTextContent(text || '');
+  const sanitizedHtml = sanitizeTextContent(html || '');
+  
+  console.log('Extracted and sanitized email data:', { 
+    from: sanitizedFrom ? `${sanitizedFrom.substring(0, 20)}...` : null, 
+    to: sanitizedTo ? `${sanitizedTo.substring(0, 20)}...` : null, 
+    subject: sanitizedSubject ? `${sanitizedSubject.substring(0, 30)}...` : null, 
+    textLength: sanitizedText?.length || 0,
+    htmlLength: sanitizedHtml?.length || 0,
+    textPreview: sanitizedText?.substring(0, 50),
+    isForwarded: sanitizedSubject?.toLowerCase().includes('fwd') || sanitizedSubject?.toLowerCase().includes('forward')
+  });
+  
+  if (!sanitizedFrom || !sanitizedTo || !sanitizedSubject) {
+    console.log('Missing or invalid required fields after sanitization:', { 
+      from: sanitizedFrom ? 'valid' : 'invalid', 
+      to: sanitizedTo ? 'valid' : 'invalid', 
+      subject: sanitizedSubject ? 'valid' : 'invalid' 
+    });
+    res.status(400).json({
+      success: false,
+      error: 'Missing or invalid required email fields',
+      details: {
+        from: !sanitizedFrom ? 'missing or invalid' : 'ok',
+        to: !sanitizedTo ? 'missing or invalid' : 'ok',
+        subject: !sanitizedSubject ? 'missing or invalid' : 'ok'
+      }
+    });
+    return;
+  }
+  
+  // Extract user ID from email address using sanitized data
+  const userId = extractUserIdFromEmail(sanitizedTo);
+  console.log('Extracted user ID:', userId);
+  
+  if (!userId) {
+    console.log('Invalid email format:', sanitizedTo);
+    res.status(400).json({
+      success: false,
+      error: 'Invalid email address format',
+      details: { email: sanitizedTo }
+    });
+    return;
+  }
+  
+  // Check if user exists (try case-sensitive first, then case-insensitive)
+  let userDoc;
+  let actualUserId = userId;
+  
+  try {
+    // First try exact match
+    userDoc = await db.collection('users').doc(userId).get();
+    
+    if (!userDoc.exists) {
+      console.log('User not found with exact case, trying case-insensitive search...');
+      
+      // Try case-insensitive search
+      const usersSnapshot = await db.collection('users').get();
+      const matchingUser = usersSnapshot.docs.find(doc => 
+        doc.id.toLowerCase() === userId.toLowerCase()
+      );
+      
+      if (matchingUser) {
+        actualUserId = matchingUser.id;
+        userDoc = matchingUser;
+        console.log('Found user with case-insensitive match:', actualUserId);
+      } else {
+        console.log('User not found with case-insensitive search:', userId);
+        res.status(404).json({
+          success: false,
+          error: 'User not found',
+          details: { 
+            requestedUserId: userId,
+            availableUsers: usersSnapshot.docs.map(doc => doc.id).slice(0, 5) // Show first 5 for debugging
+          }
+        });
+        return;
+      }
+    }
+  } catch (error) {
+    console.error('Error checking user existence:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Database error while checking user',
+      details: { userId }
+    });
+    return;
+  }
+  
+  console.log('User found, creating task...');
+  
+  // Parse email to task using sanitized data
+  let emailTask;
+  try {
+    emailTask = parseEmailToTask({
+      from: sanitizedFrom,
+      to: sanitizedTo,
+      subject: sanitizedSubject,
+      text: sanitizedText,
+      html: sanitizedHtml,
+      receivedAt: new Date()
+    });
+  } catch (error) {
+    console.error('Error parsing email to task:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Error parsing email content',
+      details: { error: error instanceof Error ? error.message : 'Unknown error' }
+    });
+    return;
+  }
+  
+  console.log('Email task parsed:', {
+    title: emailTask.title.substring(0, 50),
+    descriptionLength: emailTask.description.length,
+    area: emailTask.area,
+    importance: emailTask.importance,
+    dueDate: emailTask.dueDate?.toISOString()
+  });
+  
+  // Create task in Firestore with comprehensive error handling
+  try {
+    const taskData = {
+      ...emailTask,
+      dateNoted: admin.firestore.FieldValue.serverTimestamp(),
+      status: 'open' as const,
+      userId: actualUserId // Use the case-corrected user ID
+    };
+  
+    // Remove undefined values to avoid Firestore errors
+    Object.keys(taskData).forEach(key => {
+      if ((taskData as any)[key] === undefined) {
+        delete (taskData as any)[key];
+      }
+    });
+    
+    // Validate task data before saving
+    if (!taskData.title || taskData.title.trim().length === 0) {
+      throw new Error('Task title is required');
+    }
+    
+    if (typeof taskData.importance !== 'number' || taskData.importance < 1 || taskData.importance > 10) {
+      throw new Error('Task importance must be a number between 1 and 10');
+    }
+    
+    if (!taskData.area || typeof taskData.area !== 'string') {
+      throw new Error('Task area is required');
+    }
+    
+    console.log('Creating task in Firestore...');
+    const taskRef = await db
+      .collection('users')
+      .doc(actualUserId) // Use the case-corrected user ID
+      .collection('tasks')
+      .add(taskData);
+    
+    console.log(`Task created successfully from email for user ${actualUserId}:`, taskRef.id);
+    
+    // Send confirmation response
+    res.status(200).json({
+      success: true,
+      taskId: taskRef.id,
+      message: 'Task created successfully from email',
+      taskData: {
+        title: taskData.title,
+        area: taskData.area,
+        importance: taskData.importance,
+        status: taskData.status
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error creating task in Firestore:', error);
+    
+    // Determine error type and send appropriate response
+    if (error instanceof Error) {
+      if (error.message.includes('permission')) {
+        res.status(403).json({
+          success: false,
+          error: 'Permission denied while creating task',
+          details: { userId, message: error.message }
+        });
+      } else if (error.message.includes('quota') || error.message.includes('limit')) {
+        res.status(429).json({
+          success: false,
+          error: 'Database quota exceeded',
+          details: { userId, message: error.message }
+        });
+      } else {
+        res.status(500).json({
+          success: false,
+          error: 'Failed to create task in database',
+          details: { userId, message: error.message }
+        });
+      }
+    } else {
+      res.status(500).json({
+        success: false,
+        error: 'Unknown error while creating task',
+        details: { userId }
+      });
+    }
+    return;
+  }
+}
+
 function cleanEmailBody(body: string): string {
   // Remove HTML tags if present
   const textOnly = body.replace(/<[^>]*>/g, '');
@@ -628,6 +848,89 @@ export const processEmailTask = functions.https.onRequest(async (req, res) => {
     console.log('Request method:', req.method);
     console.log('Content-Type:', req.headers['content-type']);
     console.log('Body type:', typeof req.body);
+    
+    const contentType = req.headers['content-type'] || '';
+    
+    // Handle multipart/form-data (Mailgun route forwards)
+    if (contentType.includes('multipart/form-data')) {
+      console.log('Processing multipart/form-data from Mailgun route...');
+      
+      return new Promise<void>((resolve) => {
+        const busboy = Busboy({ headers: req.headers });
+        const fields: Record<string, string> = {};
+        
+        busboy.on('field', (fieldname: string, val: string) => {
+          fields[fieldname] = val;
+          const preview = typeof val === 'string' && val.length > 50 ? val.substring(0, 50) + '...' : val;
+          console.log(`Received field: ${fieldname} = ${preview}`);
+        });
+        
+        busboy.on('finish', async () => {
+          try {
+            console.log('All multipart fields received:', Object.keys(fields));
+            
+            // Extract email data from form fields (Mailgun route format)
+            let from = fields.sender || fields.from;
+            let to = fields.recipient || fields.to;
+            let subject = fields.subject;
+            let text = fields['body-plain'] || fields['stripped-text'] || fields.body || fields.text;
+            let html = fields['body-html'] || fields['stripped-html'] || fields.html;
+            
+            // Parse message-headers if present (sometimes Mailgun sends headers as a string)
+            if (fields['message-headers'] && typeof fields['message-headers'] === 'string') {
+              const headers = fields['message-headers'];
+              if (!from) {
+                const fromMatch = headers.match(/from:\s*([^\r\n]+)/i);
+                if (fromMatch) from = fromMatch[1].trim();
+              }
+              if (!to) {
+                const toMatch = headers.match(/to:\s*([^\r\n]+)/i);
+                if (toMatch) to = toMatch[1].trim();
+              }
+              if (!subject) {
+                const subjectMatch = headers.match(/subject:\s*([^\r\n]+)/i);
+                if (subjectMatch) subject = subjectMatch[1].trim();
+              }
+            }
+            
+            console.log('Extracted from multipart form:', { 
+              from: from ? `${from.substring(0, 30)}...` : undefined, 
+              to: to ? `${to.substring(0, 30)}...` : undefined, 
+              subject: subject ? `${subject.substring(0, 50)}...` : undefined,
+              textLength: text?.length,
+              htmlLength: html?.length
+            });
+            
+            // Process the email data
+            await processEmailData(from, to, subject, text, html, res);
+            resolve();
+          } catch (error) {
+            console.error('Error processing multipart form data:', error);
+            res.status(500).json({
+              success: false,
+              error: 'Error processing email data',
+              details: { message: error instanceof Error ? error.message : 'Unknown error' }
+            });
+            resolve();
+          }
+        });
+        
+        busboy.on('error', (error: Error) => {
+          console.error('Busboy error:', error);
+          res.status(400).json({
+            success: false,
+            error: 'Error parsing multipart form data',
+            details: { message: error.message }
+          });
+          resolve();
+        });
+        
+        req.pipe(busboy);
+      });
+    }
+    
+    // Handle JSON/webhook format (existing code)
+    console.log('Processing JSON/webhook format...');
     
     // Initialize email data variables
     let from: string | undefined, to: string | undefined, subject: string | undefined, text: string | undefined, html: string | undefined;
@@ -1075,214 +1378,8 @@ export const processEmailTask = functions.https.onRequest(async (req, res) => {
       });
     }
     
-    // Sanitize and validate extracted email data
-    const sanitizedFrom = validateAndSanitizeEmail(from || '');
-    const sanitizedTo = validateAndSanitizeEmail(to || '');
-    const sanitizedSubject = sanitizeSubject(subject || '');
-    const sanitizedText = sanitizeTextContent(text || '');
-    const sanitizedHtml = sanitizeTextContent(html || '');
-    
-    console.log('Extracted and sanitized email data:', { 
-      from: sanitizedFrom ? `${sanitizedFrom.substring(0, 20)}...` : null, 
-      to: sanitizedTo ? `${sanitizedTo.substring(0, 20)}...` : null, 
-      subject: sanitizedSubject ? `${sanitizedSubject.substring(0, 30)}...` : null, 
-      textLength: sanitizedText?.length || 0,
-      htmlLength: sanitizedHtml?.length || 0,
-      textPreview: sanitizedText?.substring(0, 50),
-      isForwarded: sanitizedSubject?.toLowerCase().includes('fwd') || sanitizedSubject?.toLowerCase().includes('forward')
-    });
-    
-    if (!sanitizedFrom || !sanitizedTo || !sanitizedSubject) {
-      console.log('Missing or invalid required fields after sanitization:', { 
-        from: sanitizedFrom ? 'valid' : 'invalid', 
-        to: sanitizedTo ? 'valid' : 'invalid', 
-        subject: sanitizedSubject ? 'valid' : 'invalid' 
-      });
-      res.status(400).json({
-        success: false,
-        error: 'Missing or invalid required email fields',
-        details: {
-          from: !sanitizedFrom ? 'missing or invalid' : 'ok',
-          to: !sanitizedTo ? 'missing or invalid' : 'ok',
-          subject: !sanitizedSubject ? 'missing or invalid' : 'ok'
-        }
-      });
-      return;
-    }
-    
-    // Extract user ID from email address using sanitized data
-    const userId = extractUserIdFromEmail(sanitizedTo);
-    console.log('Extracted user ID:', userId);
-    
-    if (!userId) {
-      console.log('Invalid email format:', sanitizedTo);
-      res.status(400).json({
-        success: false,
-        error: 'Invalid email address format',
-        details: { email: sanitizedTo }
-      });
-      return;
-    }
-    
-    // Check if user exists (try case-sensitive first, then case-insensitive)
-    let userDoc;
-    let actualUserId = userId;
-    
-    try {
-      // First try exact match
-      userDoc = await db.collection('users').doc(userId).get();
-      
-      if (!userDoc.exists) {
-        console.log('User not found with exact case, trying case-insensitive search...');
-        
-        // Try case-insensitive search
-        const usersSnapshot = await db.collection('users').get();
-        const matchingUser = usersSnapshot.docs.find(doc => 
-          doc.id.toLowerCase() === userId.toLowerCase()
-        );
-        
-        if (matchingUser) {
-          actualUserId = matchingUser.id;
-          userDoc = matchingUser;
-          console.log('Found user with case-insensitive match:', actualUserId);
-        } else {
-          console.log('User not found with case-insensitive search:', userId);
-          res.status(404).json({
-            success: false,
-            error: 'User not found',
-            details: { 
-              requestedUserId: userId,
-              availableUsers: usersSnapshot.docs.map(doc => doc.id).slice(0, 5) // Show first 5 for debugging
-            }
-          });
-          return;
-        }
-      }
-    } catch (error) {
-      console.error('Error checking user existence:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Database error while checking user',
-        details: { userId }
-      });
-      return;
-    }
-    
-    console.log('User found, creating task...');
-    
-    // Parse email to task using sanitized data
-    let emailTask;
-    try {
-      emailTask = parseEmailToTask({
-        from: sanitizedFrom,
-        to: sanitizedTo,
-        subject: sanitizedSubject,
-        text: sanitizedText,
-        html: sanitizedHtml,
-        receivedAt: new Date()
-      });
-    } catch (error) {
-      console.error('Error parsing email to task:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Error parsing email content',
-        details: { error: error instanceof Error ? error.message : 'Unknown error' }
-      });
-      return;
-    }
-    
-    console.log('Email task parsed:', {
-      title: emailTask.title.substring(0, 50),
-      descriptionLength: emailTask.description.length,
-      area: emailTask.area,
-      importance: emailTask.importance,
-      dueDate: emailTask.dueDate?.toISOString()
-    });
-    
-          // Create task in Firestore with comprehensive error handling
-      try {
-        const taskData = {
-          ...emailTask,
-          dateNoted: admin.firestore.FieldValue.serverTimestamp(),
-          status: 'open' as const,
-          userId: actualUserId // Use the case-corrected user ID
-        };
-      
-      // Remove undefined values to avoid Firestore errors
-      Object.keys(taskData).forEach(key => {
-        if ((taskData as any)[key] === undefined) {
-          delete (taskData as any)[key];
-        }
-      });
-      
-      // Validate task data before saving
-      if (!taskData.title || taskData.title.trim().length === 0) {
-        throw new Error('Task title is required');
-      }
-      
-      if (typeof taskData.importance !== 'number' || taskData.importance < 1 || taskData.importance > 10) {
-        throw new Error('Task importance must be a number between 1 and 10');
-      }
-      
-      if (!taskData.area || typeof taskData.area !== 'string') {
-        throw new Error('Task area is required');
-      }
-      
-      console.log('Creating task in Firestore...');
-      const taskRef = await db
-        .collection('users')
-        .doc(actualUserId) // Use the case-corrected user ID
-        .collection('tasks')
-        .add(taskData);
-      
-      console.log(`Task created successfully from email for user ${actualUserId}:`, taskRef.id);
-      
-      // Send confirmation response
-      res.status(200).json({
-        success: true,
-        taskId: taskRef.id,
-        message: 'Task created successfully from email',
-        taskData: {
-          title: taskData.title,
-          area: taskData.area,
-          importance: taskData.importance,
-          status: taskData.status
-        }
-      });
-      
-    } catch (error) {
-      console.error('Error creating task in Firestore:', error);
-      
-      // Determine error type and send appropriate response
-      if (error instanceof Error) {
-        if (error.message.includes('permission')) {
-          res.status(403).json({
-            success: false,
-            error: 'Permission denied while creating task',
-            details: { userId, message: error.message }
-          });
-        } else if (error.message.includes('quota') || error.message.includes('limit')) {
-          res.status(429).json({
-            success: false,
-            error: 'Database quota exceeded',
-            details: { userId, message: error.message }
-          });
-        } else {
-          res.status(500).json({
-            success: false,
-            error: 'Failed to create task in database',
-            details: { userId, message: error.message }
-          });
-        }
-      } else {
-        res.status(500).json({
-          success: false,
-          error: 'Unknown error while creating task',
-          details: { userId }
-        });
-      }
-      return;
-    }
+    // Process the extracted email data using the helper function
+    await processEmailData(from, to, subject, text, html, res);
     
   } catch (error) {
     console.error('Unexpected error processing email task:', error);
@@ -1318,5 +1415,5 @@ export const verifyRecaptcha = functions.https.onCall(async (data, context) => {
   } catch (error) {
     console.error('Error in reCAPTCHA verification function:', error);
     throw new functions.https.HttpsError('internal', 'Failed to verify reCAPTCHA');
-  }
-}); 
+    }
+  }); 

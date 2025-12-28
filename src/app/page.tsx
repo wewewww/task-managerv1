@@ -2023,7 +2023,7 @@ export default function HomePage() {
                                 <span className="text-sm text-white">{opt.label}</span>
                               </div>
                             </label>
-                          ))}
+                      ))}
                         </div>
                       </div>
                     )}

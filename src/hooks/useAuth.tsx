@@ -43,8 +43,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signInWithGoogle = async () => {
     try {
       setError(null);
-      const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
+    const provider = new GoogleAuthProvider();
+    await signInWithPopup(auth, provider);
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to sign in with Google';
       setError(errorMessage);
@@ -91,7 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = async () => {
     try {
       setError(null);
-      await firebaseSignOut(auth);
+    await firebaseSignOut(auth);
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to sign out';
       setError(errorMessage);

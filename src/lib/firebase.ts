@@ -20,7 +20,7 @@ export const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 
 // Initialize Auth
-export const auth = getAuth(app);
+export const auth = getAuth(app); 
 
 // Initialize Functions
 export const functions = getFunctions(app); 
